@@ -1,7 +1,7 @@
 receivers:
   sqlquery/slow_queries:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
     collection_interval: 15s
     queries:
       - sql: |
@@ -10,9 +10,9 @@ receivers:
             SCHEMA_NAME,
             DIGEST_TEXT,
             COUNT_STAR as exec_count,
-            SUM_TIMER_WAIT/1000000000000 as total_latency_sec,
-            AVG_TIMER_WAIT/1000000000000 as avg_latency_sec,
-            MAX_TIMER_WAIT/1000000000000 as max_latency_sec,
+            SUM_TIMER_WAIT/1000000000 as total_latency_ms,
+            AVG_TIMER_WAIT/1000000000 as avg_latency_ms,
+            MAX_TIMER_WAIT/1000000000 as max_latency_ms,
             SUM_ROWS_EXAMINED as rows_examined_total,
             SUM_ROWS_SENT as rows_sent_total,
             SUM_NO_INDEX_USED as no_index_used_count,
@@ -21,40 +21,40 @@ receivers:
           WHERE SCHEMA_NAME IS NOT NULL
             AND DIGEST_TEXT NOT LIKE '%performance_schema%'
             AND COUNT_STAR > 0
-          ORDER BY total_latency_sec DESC
+          ORDER BY total_latency_ms DESC
           LIMIT 20
         metrics:
-          - metric_name: mysql.query.exec_count
+          - metric_name: mysql.query.exec_total
             value_column: exec_count
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
-          - metric_name: mysql.query.latency.total
-            value_column: total_latency_sec
+          - metric_name: mysql.query.latency_ms
+            value_column: total_latency_ms
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
-          - metric_name: mysql.query.latency.avg
-            value_column: avg_latency_sec
+          - metric_name: mysql.query.latency_avg_ms
+            value_column: avg_latency_ms
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
-          - metric_name: mysql.query.latency.max
-            value_column: max_latency_sec
+          - metric_name: mysql.query.latency_max_ms
+            value_column: max_latency_ms
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
-          - metric_name: mysql.query.rows_examined
+          - metric_name: mysql.query.rows_examined_total
             value_column: rows_examined_total
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
-          - metric_name: mysql.query.no_index_used
+          - metric_name: mysql.query.no_index_used_total
             value_column: no_index_used_count
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
   
   sqlquery/table_stats:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
     collection_interval: 30s
     queries:
       - sql: |
           SELECT 
             OBJECT_SCHEMA,
             OBJECT_NAME,
-            SUM_TIMER_READ/1000000000000 as read_latency_sec,
-            SUM_TIMER_WRITE/1000000000000 as write_latency_sec,
-            SUM_TIMER_MISC/1000000000000 as misc_latency_sec,
+            SUM_TIMER_READ/1000000000 as read_latency_ms,
+            SUM_TIMER_WRITE/1000000000 as write_latency_ms,
+            SUM_TIMER_MISC/1000000000 as misc_latency_ms,
             COUNT_READ as read_count,
             COUNT_WRITE as write_count,
             COUNT_MISC as misc_count
@@ -63,22 +63,22 @@ receivers:
           ORDER BY (SUM_TIMER_READ + SUM_TIMER_WRITE) DESC
           LIMIT 20
         metrics:
-          - metric_name: mysql.table.io.read_latency
-            value_column: read_latency_sec
+          - metric_name: mysql.table.io.read.latency_ms
+            value_column: read_latency_ms
             attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
-          - metric_name: mysql.table.io.write_latency
-            value_column: write_latency_sec
+          - metric_name: mysql.table.io.write.latency_ms
+            value_column: write_latency_ms
             attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
-          - metric_name: mysql.table.io.read_count
+          - metric_name: mysql.table.io.read.count
             value_column: read_count
             attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
-          - metric_name: mysql.table.io.write_count
+          - metric_name: mysql.table.io.write.count
             value_column: write_count
             attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
 
   sqlquery/index_usage:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
     collection_interval: 60s
     queries:
       - sql: |
@@ -118,11 +118,15 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 30
 
-  batch:
-    timeout: 5s
+  batch/standard:
+    timeout: 10s
     send_batch_size: 1000
+
+  batch/critical:
+    timeout: 2s
+    send_batch_size: 100
   
-  attributes:
+  attributes/sql_intelligence:
     actions:
       - key: module
         value: sql-intelligence
@@ -130,77 +134,85 @@ processors:
       - key: mysql.endpoint
         value: ${env:MYSQL_ENDPOINT}
         action: insert
+      - key: cluster.name
+        value: ${env:CLUSTER_NAME}
+        action: insert
+      - key: environment
+        value: ${env:ENVIRONMENT}
+        action: insert
+      - key: tier
+        value: intelligence
+        action: insert
+
+  resource/standard:
+    attributes:
+      - key: service.name
+        value: sql-intelligence
+        action: upsert
+      - key: service.version
+        value: 2.0.0
+        action: upsert
   
-  # New Relic specific attributes
-  attributes/newrelic:
+  # New Relic specific attributes for standard pipeline
+  attributes/newrelic_standard:
     actions:
       - key: newrelic.source
         value: opentelemetry
         action: insert
       - key: instrumentation.name
-        value: mysql-otel-collector
+        value: mysql-sql-intelligence-collector
         action: insert
       - key: instrumentation.version
-        value: "2.0.0"
+        value: 2.0.0
         action: insert
       - key: instrumentation.provider
         value: opentelemetry
         action: insert
-      - key: environment
-        value: ${env:ENVIRONMENT}
+      - key: pipeline.type
+        value: standard
+        action: insert
+
+  # New Relic specific attributes for critical pipeline
+  attributes/newrelic_critical:
+    actions:
+      - key: newrelic.source
+        value: opentelemetry
+        action: insert
+      - key: instrumentation.name
+        value: mysql-sql-intelligence-collector
+        action: insert
+      - key: instrumentation.version
+        value: 2.0.0
+        action: insert
+      - key: instrumentation.provider
+        value: opentelemetry
+        action: insert
+      - key: pipeline.type
+        value: critical
+        action: insert
+      - key: priority
+        value: high
         action: insert
 
   # Entity synthesis for New Relic One
   attributes/entity_synthesis:
     actions:
       - key: entity.type
-        value: "MYSQL_INSTANCE"
+        value: MYSQL_INSTANCE
         action: insert
       - key: entity.guid
-        value: "MYSQL|${env:CLUSTER_NAME}|${env:MYSQL_ENDPOINT}"
+        value: MYSQL|${env:CLUSTER_NAME}|${env:MYSQL_ENDPOINT}
         action: insert
       - key: entity.name
-        value: "${env:MYSQL_ENDPOINT}"
+        value: ${env:MYSQL_ENDPOINT}
         action: insert
       - key: newrelic.entity.synthesis
         value: "true"
         action: insert
   
-  transform/query_analysis:
-    metric_statements:
-      - context: datapoint
-        statements:
-          - set(attributes["query_type"], 
-                Case(
-                  IsMatch(attributes["DIGEST_TEXT"], "(?i)^SELECT.*"), "SELECT",
-                  IsMatch(attributes["DIGEST_TEXT"], "(?i)^INSERT.*"), "INSERT",
-                  IsMatch(attributes["DIGEST_TEXT"], "(?i)^UPDATE.*"), "UPDATE",
-                  IsMatch(attributes["DIGEST_TEXT"], "(?i)^DELETE.*"), "DELETE",
-                  "OTHER"
-                )) where attributes["DIGEST_TEXT"] != nil
-          - set(attributes["needs_optimization"], 
-                Case(
-                  attributes["no_index_used_count"] > 0, "true",
-                  attributes["avg_latency_sec"] > 1, "true",
-                  "false"
-                )) where attributes["avg_latency_sec"] != nil
-      - context: metric
-        statements:
-          # Add event type for NRQL queries
-          - set(attributes["eventType"], "MySQLQuery")
-          # Mark high-value metrics
-          - set(attributes["nr.highValue"], true)
-            where name == "mysql.query.no_index_used" or 
-                  name == "mysql.query.latency.max"
-
-  resource:
-    attributes:
-      - key: service.name
-        value: ${env:OTEL_SERVICE_NAME}
-        action: upsert
 
 exporters:
-  # Primary New Relic OTLP exporter for standard metrics
+  # Standard New Relic exporter with compression
   otlphttp/newrelic_standard:
     endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
     headers:
@@ -210,46 +222,93 @@ exporters:
     retry_on_failure:
       enabled: true
       initial_interval: 5s
-      max_interval: 30s
+      max_interval: 60s
       max_elapsed_time: 300s
     sending_queue:
       enabled: true
       num_consumers: 5
       queue_size: 10000
 
-  # High-priority exporter for critical SQL metrics
+  # Critical New Relic exporter without compression
   otlphttp/newrelic_critical:
     endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
     headers:
       api-key: ${env:NEW_RELIC_LICENSE_KEY}
-      X-Priority: critical
-    compression: none  # No compression for lower latency
+    compression: none
     timeout: 10s
     retry_on_failure:
       enabled: true
-      initial_interval: 1s
-      max_interval: 10s
-      max_elapsed_time: 60s
+      initial_interval: 2s
+      max_interval: 20s
+      max_elapsed_time: 120s
+    sending_queue:
+      enabled: true
+      num_consumers: 3
+      queue_size: 5000
   
   debug:
-    verbosity: detailed
-    sampling_initial: 10
-    sampling_thereafter: 100
+    verbosity: basic
 
-service:
-  pipelines:
-    metrics/queries:
-      receivers: [sqlquery/slow_queries, sqlquery/table_stats, sqlquery/index_usage]
-      processors: [memory_limiter, batch, attributes, attributes/newrelic, attributes/entity_synthesis, transform/query_analysis, resource]
-      exporters: [otlphttp/newrelic_standard, debug]
-    
-    metrics/federation:
-      receivers: [prometheus]
-      processors: [memory_limiter, batch, attributes, attributes/newrelic, resource]
-      exporters: [otlphttp/newrelic_standard]
-  
-  extensions: [health_check]
+  prometheus:
+    endpoint: "0.0.0.0:8082"
+    namespace: sql_intelligence
+    const_labels:
+      module: sql-intelligence
+      cluster: ${env:CLUSTER_NAME}
 
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
+    check_collector_pipeline:
+      enabled: true
+      interval: 30s
+      exporter_failure_threshold: 3
+
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+service:
+  extensions: [health_check, pprof]
+  
+  pipelines:
+    # Standard pipeline for all SQL intelligence metrics
+    metrics/standard:
+      receivers: [sqlquery/slow_queries, sqlquery/table_stats, sqlquery/index_usage]
+      processors: [
+        memory_limiter,
+        batch/standard,
+        attributes/sql_intelligence,
+        resource/standard,
+        attributes/newrelic_standard,
+        attributes/entity_synthesis
+      ]
+      exporters: [otlphttp/newrelic_standard, prometheus, debug]
+    
+    # Critical pipeline for high-priority SQL metrics (simulated)
+    metrics/critical:
+      receivers: [sqlquery/slow_queries, sqlquery/table_stats, sqlquery/index_usage]
+      processors: [
+        memory_limiter,
+        batch/critical,
+        attributes/sql_intelligence,
+        resource/standard,
+        attributes/newrelic_critical,
+        attributes/entity_synthesis
+      ]
+      exporters: [otlphttp/newrelic_critical]
+    
+    # Federation pipeline for consuming core metrics
+    metrics/federation:
+      receivers: [prometheus]
+      processors: [
+        memory_limiter,
+        batch/standard,
+        attributes/sql_intelligence,
+        attributes/newrelic_standard,
+        resource/standard
+      ]
+      exporters: [otlphttp/newrelic_standard]
+
+  telemetry:
+    logs:
+      level: info

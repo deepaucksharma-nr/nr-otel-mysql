@@ -3,18 +3,23 @@ version: '3.8'
 services:
   alert-manager:
     build: .
+    env_file:
+      - ../../shared/config/service-endpoints.env
     environment:
       MODULE_NAME: alert-manager
       EXPORT_PORT: 8089
       OTEL_SERVICE_NAME: alert-manager
-      # Federation endpoints for metrics
-      CORE_METRICS_ENDPOINT: host.docker.internal:8889
-      SQL_INTELLIGENCE_ENDPOINT: host.docker.internal:8890
-      ANOMALY_DETECTOR_ENDPOINT: host.docker.internal:8892
+      # Alert-specific configuration
       WEBHOOK_ENDPOINT: ${WEBHOOK_ENDPOINT:-http://localhost:9999/alerts}
+      ALERT_FILE_PATH: ${ALERT_FILE_PATH:-/tmp/alerts.log}
+      # Override specific endpoints if needed
+      COLLECTOR_CONFIG: ${COLLECTOR_CONFIG:-collector.yaml}
     ports:
       - "8089:8089"
       - "8897:8889"
+      - "4329:4318"  # OTLP HTTP receiver (unique port)
     volumes:
       - ./config:/etc/otel
+      - ../../shared/config:/etc/shared
+      - /tmp:/tmp  # For alert file logging
     command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]

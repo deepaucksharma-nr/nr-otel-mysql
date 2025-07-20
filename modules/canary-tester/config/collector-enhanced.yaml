@@ -5,7 +5,7 @@ receivers:
   # Synthetic monitoring queries for baseline establishment
   sqlquery/canary:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT:canary-mysql:3306})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT:canary-mysql:3306})/performance_schema"
     collection_interval: ${env:CANARY_INTERVAL:60s}
     queries:
       # Simple connectivity check

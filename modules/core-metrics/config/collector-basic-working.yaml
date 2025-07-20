@@ -1,0 +1,102 @@
+receivers:
+  mysql:
+    endpoint: ${env:MYSQL_ENDPOINT}
+    username: ${env:MYSQL_USER}
+    password: ${env:MYSQL_PASSWORD}
+    collection_interval: 10s
+    transport: tcp
+
+processors:
+  # Memory management
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 30
+
+  batch:
+    timeout: 5s
+    send_batch_size: 1000
+  
+  attributes:
+    actions:
+      - key: module
+        value: core-metrics
+        action: insert
+      - key: mysql.endpoint
+        value: ${env:MYSQL_ENDPOINT}
+        action: insert
+
+  resource:
+    attributes:
+      - key: service.name
+        value: ${env:OTEL_SERVICE_NAME}
+        action: upsert
+
+  # New Relic specific attributes
+  attributes/newrelic:
+    actions:
+      - key: newrelic.source
+        value: opentelemetry
+        action: insert
+      - key: instrumentation.name
+        value: mysql-otel-collector
+        action: insert
+      - key: instrumentation.version
+        value: "2.0.0"
+        action: insert
+      - key: instrumentation.provider
+        value: opentelemetry
+        action: insert
+      - key: environment
+        value: ${env:ENVIRONMENT}
+        action: insert
+
+  # Entity synthesis for New Relic One
+  attributes/entity_synthesis:
+    actions:
+      - key: entity.type
+        value: "MYSQL_INSTANCE"
+        action: insert
+      - key: entity.guid
+        value: "MYSQL|${env:CLUSTER_NAME}|${env:MYSQL_ENDPOINT}"
+        action: insert
+      - key: entity.name
+        value: "${env:MYSQL_ENDPOINT}"
+        action: insert
+      - key: newrelic.entity.synthesis
+        value: "true"
+        action: insert
+
+exporters:
+  # Primary New Relic OTLP exporter
+  otlphttp/newrelic_standard:
+    endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 5
+      queue_size: 10000
+  
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    metrics:
+      receivers: [mysql]
+      processors: [memory_limiter, batch, attributes, resource, attributes/newrelic, attributes/entity_synthesis]
+      exporters: [otlphttp/newrelic_standard, debug]
+  
+  extensions: [health_check]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133

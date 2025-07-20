@@ -11,6 +11,37 @@ receivers:
             - "*"
           allowed_headers:
             - "*"
+  
+  # Prometheus federation receiver to pull metrics from other modules
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'anomaly-detector-federation'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['${env:ANOMALY_DETECTOR_ENDPOINT}']
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: '(anomaly_alert|anomaly_score_.*|anomaly_detected)'
+              action: keep
+              
+        - job_name: 'core-metrics-federation'
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['${env:CORE_METRICS_ENDPOINT}']
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: 'mysql_(connections_current|threads_running|cpu_percent|memory_.*|disk_.*|errors_total)'
+              action: keep
+              
+        - job_name: 'performance-advisor-federation'
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['${env:PERFORMANCE_ADVISOR_ENDPOINT}']
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: 'db\.performance\.recommendation\..*'
+              action: keep
 
 processors:
   # Memory limiter to prevent OOM
@@ -159,7 +190,7 @@ service:
   extensions: [health_check, pprof, memory_ballast]
   
   pipelines:
-    # Main alert processing pipeline
+    # Main alert processing pipeline - receives alerts via OTLP
     metrics/alerts:
       receivers: [otlp]
       processors:
@@ -172,9 +203,22 @@ service:
         - batch
       exporters: [webhook, file, prometheus, otlp/upstream]
     
+    # Federation pipeline - pulls metrics from other modules
+    metrics/federation:
+      receivers: [prometheus]
+      processors:
+        - memory_limiter
+        - filter
+        - transform
+        - groupbyattrs
+        - attributes
+        - resource
+        - batch
+      exporters: [webhook, file, prometheus]
+    
     # Debug pipeline for troubleshooting
     metrics/debug:
-      receivers: [otlp]
+      receivers: [otlp, prometheus]
       processors: [memory_limiter, batch]
       exporters: [debug]
   

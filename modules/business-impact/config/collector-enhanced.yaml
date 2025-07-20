@@ -129,6 +129,7 @@ processors:
           - set(attributes["critical_table"], false) where !IsMatch(attributes["db.sql.table"], "(?i).*(order|payment|user|customer|transaction|invoice|product|inventory).*")
 
   transform/create_metrics:
+    error_mode: ignore
     metric_statements:
       - context: scope
         statements:

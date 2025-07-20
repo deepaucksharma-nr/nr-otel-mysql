@@ -23,6 +23,13 @@ services:
       MYSQL_PASSWORD: test
       EXPORT_PORT: 8081
       OTEL_SERVICE_NAME: core-metrics
+      # New Relic Configuration
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY}
+      NEW_RELIC_OTLP_ENDPOINT: ${NEW_RELIC_OTLP_ENDPOINT}
+      NEW_RELIC_ACCOUNT_ID: ${NEW_RELIC_ACCOUNT_ID}
+      NEW_RELIC_API_KEY: ${NEW_RELIC_API_KEY}
+      ENVIRONMENT: production
+      CLUSTER_NAME: database-intelligence-cluster
     ports:
       - "8081:8081"
       - "8889:8889"
@@ -30,5 +37,28 @@ services:
       mysql-test:
         condition: service_healthy
     volumes:
-      - ./config:/etc/otel
-    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]
+      - ./config:/etc/otel:ro
+      - ./logs:/tmp/logs
+      - core_metrics_queue_standard:/tmp/core-metrics-queue-standard
+      - core_metrics_queue_critical:/tmp/core-metrics-queue-critical
+    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector-basic-working.yaml}"]
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 13133 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  core_metrics_queue_standard:
+    driver: local
+  core_metrics_queue_critical:
+    driver: local

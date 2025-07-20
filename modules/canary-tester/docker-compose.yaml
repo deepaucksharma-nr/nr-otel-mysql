@@ -45,9 +45,9 @@ services:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: canary-otel-collector
     ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
-      - "8888:8888"   # Prometheus metrics
+      - "4330:4317"   # OTLP gRPC receiver (unique port)
+      - "4331:4318"   # OTLP HTTP receiver (unique port)
+      - "8094:8888"   # Internal Prometheus metrics (unique port)
       - "8898:8889"   # Prometheus metrics
     volumes:
       - ./config:/etc/otel

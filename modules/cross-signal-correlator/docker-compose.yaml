@@ -37,10 +37,10 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       
     ports:
-      - "4317:4317"   # OTLP gRPC for traces
-      - "4318:4318"   # OTLP HTTP for traces
+      - "4332:4317"   # OTLP gRPC for traces (unique port)
+      - "4333:4318"   # OTLP HTTP for traces (unique port)
       - "8899:8889"   # Prometheus metrics
-      - "8888:8888"   # Internal metrics
+      - "8095:8888"   # Internal metrics (unique port)
       - "13137:13137" # Health check (changed from 13133)
       - "1777:1777"   # pprof
       - "55679:55679" # zpages

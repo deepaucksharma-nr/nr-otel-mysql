@@ -5,7 +5,7 @@ receivers:
   # Comprehensive SQL query intelligence receiver (from master-enhanced.yaml)
   sqlquery/extreme_intelligence:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
     collection_interval: ${env:SQL_INTELLIGENCE_INTERVAL:5s}
     queries:
       # Ultra-comprehensive intelligence query from master-enhanced.yaml
@@ -333,7 +333,7 @@ receivers:
   # Keep existing receivers
   sqlquery/slow_queries:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
     collection_interval: 15s
     queries:
       - sql: |
@@ -377,7 +377,7 @@ receivers:
   
   sqlquery/table_stats:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
     collection_interval: 30s
     queries:
       - sql: |
@@ -410,7 +410,7 @@ receivers:
 
   sqlquery/index_usage:
     driver: mysql
-    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/"
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
     collection_interval: 60s
     queries:
       - sql: |
@@ -500,6 +500,7 @@ processors:
   
   # Enhanced query analysis from master-enhanced.yaml
   transform/query_analysis:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:

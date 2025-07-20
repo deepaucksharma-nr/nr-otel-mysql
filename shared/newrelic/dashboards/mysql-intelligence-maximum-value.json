@@ -28,7 +28,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT sum(business.revenue_impact * CASE WHEN dateOf(timestamp) = dateOf(now()) AND hourOf(timestamp) >= 9 AND hourOf(timestamp) <= 17 THEN 3.0 WHEN dayOfWeek(timestamp) IN ('Saturday', 'Sunday') THEN 0.5 ELSE 1.0 END) as 'Revenue Impact' FROM Metric WHERE entity.type = 'MYSQL_INSTANCE' AND business_criticality IN ('CRITICAL', 'HIGH') SINCE 1 hour ago"
+                "query": "SELECT sum(business.revenue_impact * CASE WHEN dateOf(timestamp) = dateOf(now()) AND hourOf(timestamp) >= 9 AND hourOf(timestamp) <= 17 THEN 3.0 WHEN dayOfWeek(timestamp) IN ('Saturday', 'Sunday') THEN 0.5 ELSE 1.0 END) as 'Revenue Impact' FROM Metric WHERE instrumentation.provider = 'opentelemetry' AND business_criticality IN ('CRITICAL', 'HIGH') SINCE 1 hour ago"
               }
             ],
             "thresholds": [
@@ -58,7 +58,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT average(100 - (ml.composite_score * 10)) as 'Fleet Health' FROM Metric WHERE entity.type = 'MYSQL_INSTANCE' SINCE 5 minutes ago"
+                "query": "SELECT average(100 - (ml.composite_score * 10)) as 'Fleet Health' FROM Metric WHERE instrumentation.provider = 'opentelemetry' AND metricName = 'mysql.health.score' SINCE 5 minutes ago"
               }
             ],
             "thresholds": [
@@ -98,7 +98,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT percentage(count(*), WHERE sla_impact != 'violation') as 'SLA Compliance' FROM Metric WHERE entity.type = 'MYSQL_INSTANCE' AND business_criticality IN ('CRITICAL', 'HIGH') SINCE 24 hours ago"
+                "query": "SELECT percentage(count(*), WHERE sla_impact != 'violation') as 'SLA Compliance' FROM Metric WHERE instrumentation.provider = 'opentelemetry' AND business_criticality IN ('CRITICAL', 'HIGH') SINCE 24 hours ago"
               }
             ],
             "thresholds": [
@@ -128,7 +128,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT sum(business_impact_score * query_count) FROM Metric WHERE entity.type = 'MYSQL_INSTANCE' FACET business_category, dateOf(timestamp), hourOf(timestamp) SINCE 24 hours ago"
+                "query": "SELECT sum(business_impact_score * query_count) FROM Metric WHERE instrumentation.provider = 'opentelemetry' FACET business_category, dateOf(timestamp), hourOf(timestamp) SINCE 24 hours ago"
               }
             ]
           }
@@ -148,7 +148,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT predictLinear(average(ml.risk_prediction), 3600) as 'Predicted Risk (1hr)', average(ml.risk_prediction) as 'Current Risk' FROM Metric WHERE entity.type = 'MYSQL_INSTANCE' TIMESERIES 5 minutes SINCE 6 hours ago EXTRAPOLATE"
+                "query": "SELECT predictLinear(average(ml.risk_prediction), 3600) as 'Predicted Risk (1hr)', average(ml.risk_prediction) as 'Current Risk' FROM Metric WHERE instrumentation.provider = 'opentelemetry' TIMESERIES 5 minutes SINCE 6 hours ago EXTRAPOLATE"
               }
             ],
             "yAxisLeft": {
@@ -177,7 +177,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT latest(query_text) as 'Query', average(intelligence_score) as 'Score', latest(performance_issue) as 'Issue', latest(recommendations) as 'Recommendation', sum(business.revenue_impact) as 'Revenue Impact' FROM MySQLIntelligence WHERE intelligence_score > 100 FACET query_digest SINCE 1 hour ago LIMIT 20"
+                "query": "SELECT latest(attributes['query_text']) as 'Query', average(value) as 'Score', latest(attributes['performance_issue']) as 'Issue', latest(attributes['recommendations']) as 'Recommendation', sum(attributes['business.revenue_impact']) as 'Revenue Impact' FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' AND value > 100 FACET attributes['query_digest'] SINCE 1 hour ago LIMIT 20"
               }
             ]
           }
@@ -197,7 +197,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT ml.anomaly_score, ml.confidence FROM Metric WHERE ml.is_anomaly = true AND entity.type = 'MYSQL_INSTANCE' FACET anomaly_type, ml.algorithm TIMESERIES 1 minute SINCE 2 hours ago"
+                "query": "SELECT ml.anomaly_score, ml.confidence FROM Metric WHERE attributes['ml.is_anomaly'] = 'true' AND instrumentation.provider = 'opentelemetry' FACET anomaly_type, ml.algorithm TIMESERIES 1 minute SINCE 2 hours ago"
               }
             ],
             "yAxisLeft": {
@@ -241,7 +241,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT query_digest as 'Query', count(*) as 'Executions', average(current_exec_time_ms) as 'Avg Time', max(current_exec_time_ms) as 'Max Time', latest(current_wait_profile) as 'Wait Profile', latest(lock_status) as 'Lock Status' FROM MySQLIntelligence WHERE current_exec_time_ms > 0 FACET query_digest SINCE 5 minutes ago LIMIT 50"
+                "query": "SELECT attributes['query_digest'] as 'Query', count(*) as 'Executions', average(attributes['current_exec_time_ms']) as 'Avg Time', max(attributes['current_exec_time_ms']) as 'Max Time', latest(attributes['current_wait_profile']) as 'Wait Profile', latest(attributes['lock_status']) as 'Lock Status' FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' AND attributes['current_exec_time_ms'] > 0 FACET attributes['query_digest'] SINCE 5 minutes ago LIMIT 50"
               }
             ]
           }
@@ -261,7 +261,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT sum(current_wait_time_ms) FROM MySQLWaitProfile FACET wait.primary_category SINCE 5 minutes ago"
+                "query": "SELECT sum(attributes['current_wait_time_ms']) FROM Metric WHERE metricName = 'mysql.query.wait_profile' FACET attributes['wait.primary_category'] SINCE 5 minutes ago"
               }
             ]
           }
@@ -281,7 +281,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT count(*) FROM MySQLIntelligence WHERE lock_status IN ('BLOCKING', 'BLOCKED') FACET blocking_thread_id, blocked_thread_id TIMESERIES 1 minute SINCE 30 minutes ago"
+                "query": "SELECT count(*) FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' AND attributes['lock_status'] IN ('BLOCKING', 'BLOCKED') FACET blocking_thread_id, blocked_thread_id TIMESERIES 1 minute SINCE 30 minutes ago"
               }
             ]
           }
@@ -301,7 +301,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT average(cpu_pressure_score), average(memory_pressure_score), average(io_pressure_score) FROM MySQLIntelligence FACET query_digest, minuteOf(timestamp) SINCE 1 hour ago"
+                "query": "SELECT average(cpu_pressure_score), average(memory_pressure_score), average(io_pressure_score) FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' FACET attributes['query_digest'], minuteOf(timestamp) SINCE 1 hour ago"
               }
             ]
           }
@@ -393,7 +393,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT predictLinear(average(query_duration_ms), 3600) as 'Predicted (1hr)', average(query_duration_ms) as 'Current' FROM MySQLIntelligence FACET query_digest TIMESERIES 5 minutes SINCE 6 hours ago EXTRAPOLATE LIMIT 5"
+                "query": "SELECT predictLinear(average(query_duration_ms), 3600) as 'Predicted (1hr)', average(query_duration_ms) as 'Current' FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' FACET attributes['query_digest'] TIMESERIES 5 minutes SINCE 6 hours ago EXTRAPOLATE LIMIT 5"
               }
             ]
           }
@@ -413,7 +413,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT predictLinear(max(mysql.connections.current), 86400) as 'Predicted Connections (24hr)', max(mysql.connections.current) as 'Current', average(mysql.connections.max) as 'Max Allowed' FROM Metric WHERE entity.type = 'MYSQL_INSTANCE' TIMESERIES 30 minutes SINCE 7 days ago EXTRAPOLATE"
+                "query": "SELECT predictLinear(max(mysql.connections.current), 86400) as 'Predicted Connections (24hr)', max(mysql.connections.current) as 'Current', average(mysql.connections.max) as 'Max Allowed' FROM Metric WHERE instrumentation.provider = 'opentelemetry' TIMESERIES 30 minutes SINCE 7 days ago EXTRAPOLATE"
               }
             ]
           }
@@ -459,7 +459,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT latest(action.required) as 'Action', latest(query_text) as 'Query', latest(business.revenue_impact) as 'Revenue Impact', latest(lock_status) as 'Status', latest(current_exec_time_ms) as 'Exec Time' FROM MySQLIntelligence WHERE action.required IS NOT NULL FACET query_digest, timestamp SINCE 30 minutes ago LIMIT 20"
+                "query": "SELECT latest(action.required) as 'Action', latest(query_text) as 'Query', latest(business.revenue_impact) as 'Revenue Impact', latest(lock_status) as 'Status', latest(current_exec_time_ms) as 'Exec Time' FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' AND attributes['action.required'] IS NOT NULL FACET query_digest, timestamp SINCE 30 minutes ago LIMIT 20"
               }
             ]
           }
@@ -571,7 +571,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT count(*) FROM MySQLIntelligence FACET ml.workload_type, business_category, db_schema SINCE 1 hour ago"
+                "query": "SELECT count(*) FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' FACET attributes['ml.workload_type'], attributes['business_category'], attributes['db_schema'] SINCE 1 hour ago"
               }
             ]
           }
@@ -591,7 +591,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT uniqueCount(query_digest) as 'Unique Patterns', count(*) / uniqueCount(query_digest) as 'Avg Executions per Pattern' FROM MySQLIntelligence TIMESERIES 1 hour SINCE 7 days ago"
+                "query": "SELECT uniqueCount(query_digest) as 'Unique Patterns', count(*) / uniqueCount(query_digest) as 'Avg Executions per Pattern' FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' TIMESERIES 1 hour SINCE 7 days ago"
               }
             ]
           }

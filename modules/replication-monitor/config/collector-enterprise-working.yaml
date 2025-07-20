@@ -1,0 +1,415 @@
+# Enterprise Replication Monitor Configuration - Working Version
+# Full MySQL replication monitoring with circuit breaker pattern
+
+receivers:
+  mysql:
+    endpoint: ${env:MYSQL_MASTER_ENDPOINT:-mysql-master:3306}
+    username: ${env:MYSQL_USER}
+    password: ${env:MYSQL_PASSWORD}
+    database: ${env:MYSQL_DATABASE:-test_db}
+    collection_interval: 10s
+    transport: tcp
+
+  mysql/replica:
+    endpoint: ${env:MYSQL_REPLICA_ENDPOINT:-mysql-replica:3306}
+    username: ${env:MYSQL_USER}
+    password: ${env:MYSQL_PASSWORD}
+    database: ${env:MYSQL_DATABASE:-test_db}
+    collection_interval: 10s
+    transport: tcp
+
+  # Custom SQL queries for replication monitoring
+  sqlquery:
+    driver: mysql
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_MASTER_ENDPOINT:-mysql-master:3306})/${env:MYSQL_DATABASE:-test_db}"
+    queries:
+      - sql: |
+          SHOW MASTER STATUS
+        metrics:
+          - metric_name: mysql.replication.master.log_file
+            value_column: "File"
+            value_type: string
+            attribute_columns:
+              - "Position"
+              - "Binlog_Do_DB"
+              - "Binlog_Ignore_DB"
+          - metric_name: mysql.replication.master.log_position
+            value_column: "Position"
+            value_type: int
+        collection_interval: 10s
+
+  sqlquery/replica:
+    driver: mysql
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_REPLICA_ENDPOINT:-mysql-replica:3306})/${env:MYSQL_DATABASE:-test_db}"
+    queries:
+      - sql: |
+          SHOW SLAVE STATUS
+        metrics:
+          - metric_name: mysql.replication.slave.io_running
+            value_column: "Slave_IO_Running"
+            value_type: string
+          - metric_name: mysql.replication.slave.sql_running
+            value_column: "Slave_SQL_Running"
+            value_type: string
+          - metric_name: mysql.replication.slave.seconds_behind_master
+            value_column: "Seconds_Behind_Master"
+            value_type: int
+            attribute_columns:
+              - "Master_Host"
+              - "Master_User"
+              - "Master_Port"
+          - metric_name: mysql.replication.slave.last_error
+            value_column: "Last_Error"
+            value_type: string
+            attribute_columns:
+              - "Last_Errno"
+          - metric_name: mysql.replication.slave.exec_master_log_pos
+            value_column: "Exec_Master_Log_Pos"
+            value_type: int
+            attribute_columns:
+              - "Master_Log_File"
+              - "Relay_Log_File"
+        collection_interval: 5s
+
+      # Numeric replication status query using performance_schema
+      - sql: |
+          SELECT 
+            COUNT(DISTINCT CASE WHEN NAME = 'slave_io' AND TYPE = 'FOREGROUND' THEN THREAD_ID END) as io_thread_running,
+            COUNT(DISTINCT CASE WHEN NAME = 'slave_sql' AND TYPE = 'FOREGROUND' THEN THREAD_ID END) as sql_thread_running,
+            (SELECT IF(COUNT(*) > 0, 1, 0) 
+             FROM information_schema.PROCESSLIST 
+             WHERE COMMAND = 'Binlog Dump') as has_slave_connections
+          FROM performance_schema.threads
+          WHERE NAME IN ('slave_io', 'slave_sql')
+        metrics:
+          - metric_name: mysql.replication.slave.io_running
+            value_column: "io_thread_running"
+            value_type: int
+          - metric_name: mysql.replication.slave.sql_running
+            value_column: "sql_thread_running"
+            value_type: int
+          - metric_name: mysql.replication.slave.has_connections
+            value_column: "has_slave_connections"
+            value_type: int
+        collection_interval: 5s
+
+      - sql: |
+          SELECT 
+            @@gtid_executed as executed_gtid_set,
+            @@gtid_purged as purged_gtid_set,
+            @@gtid_mode as gtid_mode,
+            CASE 
+              WHEN @@gtid_mode = 'ON' THEN 1 
+              WHEN @@gtid_mode = 'ON_PERMISSIVE' THEN 2
+              WHEN @@gtid_mode = 'OFF_PERMISSIVE' THEN 3
+              ELSE 0 
+            END as gtid_mode_numeric
+        metrics:
+          - metric_name: mysql.replication.gtid.executed
+            value_column: "executed_gtid_set"
+            value_type: string
+          - metric_name: mysql.replication.gtid.purged
+            value_column: "purged_gtid_set"
+            value_type: string
+          - metric_name: mysql.replication.gtid.mode
+            value_column: "gtid_mode_numeric"
+            value_type: int
+        collection_interval: 10s
+
+      - sql: |
+          SELECT 
+            CHANNEL_NAME,
+            SERVICE_STATE,
+            CASE WHEN SERVICE_STATE = 'ON' THEN 1 ELSE 0 END as service_state_numeric,
+            LAST_ERROR_NUMBER,
+            LAST_ERROR_MESSAGE,
+            LAST_ERROR_TIMESTAMP
+          FROM performance_schema.replication_connection_status
+        metrics:
+          - metric_name: mysql.replication.connection.status
+            value_column: "service_state_numeric"
+            value_type: int
+            attribute_columns:
+              - "CHANNEL_NAME"
+              - "SERVICE_STATE"
+              - "LAST_ERROR_NUMBER"
+              - "LAST_ERROR_MESSAGE"
+          - metric_name: mysql.replication.connection.status_text
+            value_column: "SERVICE_STATE"
+            value_type: string
+            attribute_columns:
+              - "CHANNEL_NAME"
+              - "LAST_ERROR_NUMBER"
+              - "LAST_ERROR_MESSAGE"
+        collection_interval: 10s
+
+      - sql: |
+          SELECT 
+            CHANNEL_NAME,
+            THREAD_ID,
+            SERVICE_STATE,
+            CASE WHEN SERVICE_STATE = 'ON' THEN 1 ELSE 0 END as service_state_numeric,
+            LAST_ERROR_NUMBER,
+            LAST_ERROR_MESSAGE
+          FROM performance_schema.replication_applier_status
+        metrics:
+          - metric_name: mysql.replication.applier.status
+            value_column: "service_state_numeric"
+            value_type: int
+            attribute_columns:
+              - "CHANNEL_NAME"
+              - "THREAD_ID"
+              - "SERVICE_STATE"
+              - "LAST_ERROR_NUMBER"
+          - metric_name: mysql.replication.applier.status_text
+            value_column: "SERVICE_STATE"
+            value_type: string
+            attribute_columns:
+              - "CHANNEL_NAME"
+              - "THREAD_ID"
+              - "LAST_ERROR_NUMBER"
+        collection_interval: 10s
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 30
+
+  batch/standard:
+    timeout: 10s
+    send_batch_size: 1000
+
+  batch/critical:
+    timeout: 2s
+    send_batch_size: 100
+
+  # Core attributes for replication monitor
+  attributes/replication_monitor:
+    actions:
+      - key: module
+        value: replication-monitor
+        action: insert
+      - key: db.system
+        value: mysql
+        action: insert
+      - key: cluster.name
+        value: ${env:CLUSTER_NAME}
+        action: insert
+      - key: environment
+        value: ${env:ENVIRONMENT}
+        action: insert
+      - key: tier
+        value: infrastructure
+        action: insert
+      - key: db.connection_string
+        action: delete
+
+  resource/standard:
+    attributes:
+      - key: service.name
+        value: mysql-replication-monitor
+        action: upsert
+      - key: service.version
+        value: 2.0.0
+        action: upsert
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT}
+        action: upsert
+
+  # New Relic specific attributes for standard pipeline
+  attributes/newrelic_standard:
+    actions:
+      - key: newrelic.source
+        value: opentelemetry
+        action: insert
+      - key: instrumentation.name
+        value: mysql-replication-monitor
+        action: insert
+      - key: instrumentation.version
+        value: 2.0.0
+        action: insert
+      - key: instrumentation.provider
+        value: opentelemetry
+        action: insert
+      - key: pipeline.type
+        value: standard
+        action: insert
+
+  # New Relic specific attributes for critical replication alerts
+  attributes/newrelic_critical:
+    actions:
+      - key: newrelic.source
+        value: opentelemetry
+        action: insert
+      - key: instrumentation.name
+        value: mysql-replication-monitor
+        action: insert
+      - key: instrumentation.version
+        value: 2.0.0
+        action: insert
+      - key: instrumentation.provider
+        value: opentelemetry
+        action: insert
+      - key: pipeline.type
+        value: critical
+        action: insert
+      - key: priority
+        value: high
+        action: insert
+      - key: alert.type
+        value: replication
+        action: insert
+
+  # Entity synthesis for New Relic One
+  attributes/entity_synthesis:
+    actions:
+      - key: entity.type
+        value: MYSQL_REPLICATION
+        action: insert
+      - key: entity.guid
+        value: REPLICATION|${env:CLUSTER_NAME}|${env:MYSQL_MASTER_ENDPOINT:-mysql-master:3306}
+        action: insert
+      - key: entity.name
+        value: ${env:MYSQL_MASTER_ENDPOINT:-mysql-master:3306}-replication
+        action: insert
+      - key: newrelic.entity.synthesis
+        value: "true"
+        action: insert
+
+  # Replication health scoring
+  attributes/replication_health:
+    actions:
+      - key: replication.lag_threshold_warning
+        value: ${env:LAG_THRESHOLD_WARNING:-10}
+        action: insert
+      - key: replication.lag_threshold_critical
+        value: ${env:LAG_THRESHOLD_CRITICAL:-60}
+        action: insert
+      - key: replication.monitoring.enabled
+        value: "true"
+        action: insert
+
+exporters:
+  # Standard New Relic exporter for all replication metrics
+  otlphttp/newrelic_standard:
+    endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+    compression: gzip
+    timeout: 30s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 20000
+
+  # Critical New Relic exporter for replication alerts
+  otlphttp/newrelic_critical:
+    endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+    compression: none
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 2s
+      max_interval: 20s
+      max_elapsed_time: 120s
+    sending_queue:
+      enabled: true
+      num_consumers: 5
+      queue_size: 10000
+
+  # Prometheus exporter for local monitoring
+  prometheus:
+    endpoint: "0.0.0.0:${env:EXPORT_PORT}"
+    namespace: mysql_replication
+    const_labels:
+      monitor: replication
+      cluster: ${env:CLUSTER_NAME}
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug exporter
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+  # OTLP for forwarding
+  otlp:
+    endpoint: ${env:OTLP_ENDPOINT:-localhost:4317}
+    tls:
+      insecure: true
+
+  # File exporter for replication status reports
+  file/replication_status:
+    path: /tmp/replication-status/status.json
+    rotation:
+      max_megabytes: 100
+      max_days: 7
+      max_backups: 10
+    format: json
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: "/health"
+    check_collector_pipeline:
+      enabled: true
+      interval: 5m
+      exporter_failure_threshold: 5
+
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [health_check, pprof, zpages]
+  
+  pipelines:
+    # Main pipeline for all replication metrics
+    metrics/replication:
+      receivers: [mysql, mysql/replica, sqlquery, sqlquery/replica]
+      processors: [
+        memory_limiter,
+        batch/standard,
+        attributes/replication_monitor,
+        attributes/replication_health,
+        resource/standard,
+        attributes/newrelic_standard,
+        attributes/entity_synthesis
+      ]
+      exporters: [otlphttp/newrelic_standard, prometheus, debug, otlp]
+
+    # Critical pipeline for replication lag and failure alerts
+    metrics/critical_replication:
+      receivers: [sqlquery/replica]
+      processors: [
+        memory_limiter,
+        batch/critical,
+        attributes/replication_monitor,
+        attributes/replication_health,
+        resource/standard,
+        attributes/newrelic_critical,
+        attributes/entity_synthesis
+      ]
+      exporters: [otlphttp/newrelic_critical, file/replication_status]
+
+  telemetry:
+    logs:
+      level: info
+      development: false
+      encoding: json
+      sampling:
+        initial: 10
+        thereafter: 100
+    metrics:
+      level: detailed

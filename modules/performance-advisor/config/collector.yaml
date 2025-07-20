@@ -8,26 +8,44 @@ receivers:
             - "http://*"
             - "https://*"
   
-  # Pull metrics from other modules
+  # Pull metrics from other modules via federation
   prometheus:
     config:
       scrape_configs:
-        - job_name: 'anomaly-detector'
-          scrape_interval: 30s
+        - job_name: 'core-metrics-federation'
+          scrape_interval: 10s
           static_configs:
-            - targets: ['anomaly-detector:8081']
-        
-        - job_name: 'query-analyzer'
-          scrape_interval: 30s
+            - targets: ['${env:CORE_METRICS_ENDPOINT}']
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: 'mysql_.*'
+              action: keep
+              
+        - job_name: 'sql-intelligence-federation'
+          scrape_interval: 10s
           static_configs:
-            - targets: ['query-analyzer:8083']
-        
-        - job_name: 'intelligent-alerting'
-          scrape_interval: 30s
+            - targets: ['${env:SQL_INTELLIGENCE_ENDPOINT}']
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: '(mysql_query_.*|mysql_slow_.*|mysql_plan_.*|mysql_statement_.*)'
+              action: keep
+              
+        - job_name: 'anomaly-detector-federation'
+          scrape_interval: 10s
           static_configs:
-            - targets: ['intelligent-alerting:8085']
+            - targets: ['${env:ANOMALY_DETECTOR_ENDPOINT}']
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: '(anomaly_.*|db\.performance\.recommendation\..*|anomaly_alert)'
+              action: keep
 
 processors:
+  # Memory management
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 640
+    spike_limit_mib: 160
+
   batch:
     timeout: 10s
     send_batch_size: 1024
@@ -219,7 +237,7 @@ exporters:
   
   # Export to OTLP endpoint (for downstream consumption)
   otlp/recommendations:
-    endpoint: "intelligent-alerting:8085"
+    endpoint: "${env:ALERT_MANAGER_ENDPOINT}"
     tls:
       insecure: true
     retry_on_failure:
@@ -232,12 +250,12 @@ service:
   pipelines:
     metrics:
       receivers: [otlp, prometheus]
-      processors: [batch, transform, resource, attributes/newrelic, attributes/entity_synthesis, filter]
+      processors: [memory_limiter, batch, transform, resource, attributes/newrelic, attributes/entity_synthesis, filter]
       exporters: [otlphttp/newrelic_standard, debug, otlp/recommendations]
     
     metrics/critical:
       receivers: [otlp, prometheus]
-      processors: [batch, transform, resource, attributes/newrelic, attributes/entity_synthesis, filter]
+      processors: [memory_limiter, batch, transform, resource, attributes/newrelic, attributes/entity_synthesis, filter]
       exporters: [otlphttp/newrelic_critical]
   
   extensions: [health_check, zpages]

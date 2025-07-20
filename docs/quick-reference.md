@@ -1,21 +1,24 @@
-# Quick Reference: MySQL Plan Intelligence & DPA
+# Quick Reference: Database Intelligence Monorepo
 
 ## Essential Commands
 
 ### Deployment
 ```bash
-# Quick start (both modules)
+# Quick start (core modules)
 cd database-intelligence-monorepo
-docker-compose -f modules/sql-intelligence/docker-compose.yaml up -d
-docker-compose -f modules/wait-profiler/docker-compose.yaml up -d
+make run-core-metrics
+make run-sql-intelligence
+make run-wait-profiler
+
+# Quick start (all modules)
+make run-all
 
 # Check status
-curl -s http://localhost:13133/health | jq .  # Plan Intelligence
-curl -s http://localhost:13134/health | jq .  # Wait Profiler
+make health
 
-# View logs
-docker-compose -f modules/sql-intelligence/docker-compose.yaml logs -f
-docker-compose -f modules/wait-profiler/docker-compose.yaml logs -f
+# View logs for specific module
+make logs-sql-intelligence
+make logs-wait-profiler
 ```
 
 ### MySQL Setup
@@ -34,134 +37,140 @@ UPDATE performance_schema.setup_consumers SET ENABLED = 'YES';
 
 ## Key Metrics Reference
 
-### Plan Intelligence Metrics
+### Core Metrics Module (Port 8081)
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `INDEX_EFFICIENCY_SCORE` | Query index usage (0-100) | < 50 |
-| `query.cost_score` | Combined cost metric | > 1000 |
-| `SELECTIVITY` | Rows returned / examined | < 0.1 |
-| `query.performance_tier` | critical/slow/acceptable/good/optimal | = critical |
-| `stats.is_stale` | Table statistics outdated | = true |
-| `index.recommendation_type` | CREATE_INDEX/OPTIMIZE_INDEX/NONE | != NONE |
+| `mysql_connections_current` | Active connections | > 80% max_connections |
+| `mysql_threads_running` | Running threads | > 50 |
+| `mysql_slow_queries_total` | Slow query count | Increasing trend |
+| `mysql_buffer_pool_pages_dirty` | Dirty pages | > 50% |
 
-### Wait Analysis Metrics
+### SQL Intelligence Module (Port 8082)
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `wait.anomaly_score` | Wait anomaly detection (0-100) | > 70 |
-| `MAX_LOCK_WAIT_MS` | Maximum lock wait time | > 5000 |
-| `WAIT_PERCENTAGE` | Query time spent waiting | > 50 |
-| `lock.severity` | deadlock_risk/critical/high/medium/low | >= high |
-| `wait.pattern` | lock_contention/io_bottleneck/mutex_contention | != normal |
+| `mysql_statement_avg_timer_wait` | Average query time | > 1s |
+| `mysql_statement_executions` | Query execution count | Monitor top queries |
+| `mysql_index_io_wait_count` | Index wait events | > 1000/sec |
+| `mysql_table_io_wait_count` | Table I/O wait events | > 5000/sec |
 
-## NRQL Queries Cheat Sheet
+### Anomaly Detector Module (Port 8084)
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `anomaly_score_cpu` | CPU anomaly score | > 70 |
+| `anomaly_score_memory` | Memory anomaly score | > 70 |
+| `anomaly_score_connections` | Connection anomaly score | > 80 |
+| `anomaly_detected` | Boolean anomaly flag | = 1 |
 
-### Top Slow Queries
+### Performance Advisor Module (Port 8087)
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `db.performance.recommendation.missing_index` | Missing index recommendations | Any occurrence |
+| `db.performance.recommendation.slow_query` | Slow query recommendations | Any occurrence |
+| `db.performance.recommendation.connection_pool` | Pool sizing recommendations | Any occurrence |
+| `db.performance.recommendation.cache_efficiency` | Cache recommendations | Any occurrence |
+
+## New Relic Dashboard Queries
+
+### Core Performance Overview
 ```nrql
-SELECT latest(DIGEST_TEXT), average(AVG_TIME_MS), sum(EXECUTION_COUNT) 
-FROM MySQLPlanIntelligence 
-WHERE query.performance_tier IN ('critical', 'slow')
-FACET DIGEST 
+SELECT average(mysql_connections_current), 
+       average(mysql_threads_running),
+       rate(mysql_slow_queries_total, 1 minute)
+FROM Metric 
+WHERE service.name = 'core-metrics'
+TIMESERIES 5 minutes 
 SINCE 1 hour ago
 ```
 
-### Missing Indexes
+### SQL Intelligence Analysis
 ```nrql
-SELECT latest(recommendation.text), latest(PRIMARY_TABLE), sum(ROWS_EXAMINED)
-FROM MySQLPlanIntelligence 
-WHERE index.recommendation_type = 'CREATE_INDEX'
-FACET DIGEST 
-SINCE 24 hours ago
+SELECT average(mysql_statement_avg_timer_wait) as 'Avg Query Time',
+       sum(mysql_statement_executions) as 'Total Executions'
+FROM Metric 
+WHERE service.name = 'sql-intelligence'
+FACET statement_digest
+SINCE 1 hour ago
 ```
 
-### Current Lock Chains
+### Anomaly Detection Status
 ```nrql
-SELECT latest(LOCK_CHAINS), max(MAX_LOCK_WAIT_MS)
-FROM MySQLLockChainAnalysis 
-WHERE LOCK_WAIT_COUNT > 0 
-SINCE 5 minutes ago
-```
-
-### Wait Anomalies
-```nrql
-SELECT max(wait.anomaly_score), latest(wait.pattern)
-FROM MySQLWaitAnalysis 
-WHERE wait.anomaly_score > 50
-FACET WAIT_CATEGORY 
+SELECT latest(anomaly_detected) as 'Anomaly Status',
+       max(anomaly_score_cpu) as 'CPU Score',
+       max(anomaly_score_memory) as 'Memory Score'
+FROM Metric 
+WHERE service.name = 'anomaly-detector'
 TIMESERIES 1 minute 
 SINCE 30 minutes ago
 ```
 
-### Query-Wait Correlation
+### Performance Recommendations
 ```nrql
-SELECT latest(DIGEST_TEXT), average(WAIT_PERCENTAGE), latest(DOMINANT_WAIT_EVENT)
-FROM MySQLQueryWaitCorrelation 
-WHERE WAIT_PERCENTAGE > 30
-FACET DIGEST 
-SINCE 1 hour ago
+SELECT count(*) as 'Recommendation Count'
+FROM Metric 
+WHERE metricName LIKE 'db.performance.recommendation.%'
+FACET metricName, attributes.severity
+SINCE 1 day ago
 ```
 
-## Common Patterns & Solutions
-
-### Pattern: High Lock Waits
-**Symptoms:**
-- `lock.severity` = critical
-- `BLOCKED_THREADS` > 5
-- Timeouts in application
-
-**Quick Fix:**
-```sql
--- Find blocking queries
-SELECT * FROM information_schema.INNODB_LOCKS;
-SELECT * FROM information_schema.INNODB_LOCK_WAITS;
-
--- Kill blocking thread
-KILL <thread_id>;
+### Business Impact Assessment
+```nrql
+SELECT latest(business_impact_score),
+       latest(revenue_impact_hourly)
+FROM Metric 
+WHERE service.name = 'business-impact'
+AND business_criticality = 'CRITICAL'
+TIMESERIES 5 minutes 
+SINCE 2 hours ago
 ```
 
-### Pattern: Missing Indexes
-**Symptoms:**
-- `NO_INDEX_USED` = YES
-- `INDEX_EFFICIENCY_SCORE` < 30
-- High `ROWS_EXAMINED`
+## Module Operations
 
-**Quick Fix:**
-```sql
--- Get index recommendation from dashboard
--- Verify with EXPLAIN
-EXPLAIN SELECT ...;
+### Individual Module Commands
+```bash
+# Start specific modules
+make run-core-metrics        # Port 8081
+make run-sql-intelligence    # Port 8082
+make run-wait-profiler      # Port 8083
+make run-anomaly-detector   # Port 8084
+make run-business-impact    # Port 8085
+make run-replication-monitor # Port 8086
+make run-performance-advisor # Port 8087
+make run-resource-monitor   # Port 8088
 
--- Create index
-CREATE INDEX idx_name ON table(columns);
+# Stop modules
+make stop-core-metrics
+make stop-sql-intelligence
+
+# View logs
+make logs-anomaly-detector
+make logs-performance-advisor
+
+# Clean up
+make clean-core-metrics
+make docker-clean
 ```
 
-### Pattern: I/O Bottleneck
-**Symptoms:**
-- `wait.pattern` = io_bottleneck
-- IO_InnoDB > 50% of waits
-- Slow full table scans
+### Module Groups
+```bash
+# Run related modules together
+make run-core         # core-metrics + resource-monitor
+make run-intelligence # sql-intelligence + wait-profiler + anomaly-detector
+make run-business     # business-impact + performance-advisor
 
-**Quick Fix:**
-```sql
--- Increase buffer pool
-SET GLOBAL innodb_buffer_pool_size = 8589934592;  -- 8GB
-
--- Warm up buffer pool
-SELECT COUNT(*) FROM large_table;
+# Integration testing
+make integration      # Full integration test suite
+make perf-test       # Performance testing
 ```
 
-### Pattern: Stale Statistics
-**Symptoms:**
-- `stats.is_stale` = true
-- Plan changes detected
-- Performance regression
+### Health Checks
+```bash
+# Check all module health
+make health
 
-**Quick Fix:**
-```sql
--- Update specific table
-ANALYZE TABLE table_name;
-
--- Update all tables
-mysqlcheck -Aa --auto-repair
+# Individual health checks
+curl http://localhost:8081/metrics  # core-metrics
+curl http://localhost:8084/metrics  # anomaly-detector
+curl http://localhost:13133/       # Health endpoint (most modules)
 ```
 
 ## Environment Variables Quick Reference
@@ -183,21 +192,27 @@ export BATCH_SIZE=1000
 ## Troubleshooting Commands
 
 ```bash
-# Check collector metrics
-curl -s http://localhost:8889/metrics | grep mysql_
+# Check module metrics endpoints
+curl -s http://localhost:8081/metrics | grep mysql_  # core-metrics
+curl -s http://localhost:8082/metrics | grep mysql_  # sql-intelligence
+curl -s http://localhost:8084/metrics | grep anomaly_ # anomaly-detector
 
-# Test MySQL connection
-mysql -h$MYSQL_ENDPOINT -u$MYSQL_USER -p$MYSQL_PASSWORD -e "SELECT 1"
+# Test MySQL connection from any module
+docker exec -it core-metrics-otel-collector \
+  mysql -h$MYSQL_ENDPOINT -u$MYSQL_USER -p$MYSQL_PASSWORD -e "SELECT 1"
 
 # Verify Performance Schema
 mysql -h$MYSQL_ENDPOINT -u$MYSQL_USER -p$MYSQL_PASSWORD \
   -e "SELECT * FROM performance_schema.setup_consumers WHERE ENABLED='NO'"
 
-# Debug mode
-docker-compose -f modules/sql-intelligence/docker-compose.yaml \
-  run --rm sql-intelligence \
+# Debug mode for specific module
+cd modules/sql-intelligence
+docker-compose run --rm sql-intelligence-otel-collector \
   --config /etc/otel/collector.yaml \
   --set service.telemetry.logs.level=debug
+
+# Check module dependencies
+make check-dependencies-anomaly-detector
 ```
 
 ## Performance Tuning Quick Wins
@@ -224,21 +239,26 @@ queries:
   - sql: "... LIMIT 200"  # Increase limits for more coverage
 ```
 
-## Alert Thresholds
+## Alert Thresholds by Module
 
-| Metric | Warning | Critical | Action |
-|--------|---------|----------|---------|
-| Query execution time | > 1s | > 5s | Optimize query |
-| Lock wait time | > 1s | > 5s | Review transactions |
-| Index efficiency | < 70 | < 50 | Add indexes |
-| Wait anomaly score | > 40 | > 70 | Investigate waits |
-| Blocked threads | > 2 | > 5 | Check lock chains |
-| Stats age | > 7 days | > 14 days | Update statistics |
+| Module | Metric | Warning | Critical | Action |
+|--------|--------|---------|----------|---------|
+| Core Metrics | `mysql_connections_current` | > 80% max | > 95% max | Scale connections |
+| Core Metrics | `mysql_threads_running` | > 50 | > 100 | Check query load |
+| SQL Intelligence | `mysql_statement_avg_timer_wait` | > 1s | > 5s | Optimize queries |
+| Anomaly Detector | `anomaly_score_*` | > 50 | > 70 | Investigate anomaly |
+| Performance Advisor | Recommendation count | > 5 | > 20 | Review recommendations |
+| Business Impact | `revenue_impact_hourly` | > $1000 | > $5000 | Escalate immediately |
+| Replication Monitor | `mysql_replica_lag` | > 60s | > 300s | Check replication |
+| Resource Monitor | CPU usage | > 80% | > 95% | Scale resources |
 
 ## Quick Links
 
-- [Full Deployment Guide](./plan-intelligence-deployment-guide.md)
+- [Project Overview](../CLAUDE.md) - Complete project documentation
+- [Deployment Guide](./plan-intelligence-deployment-guide.md)
 - [Use Cases & Examples](./plan-intelligence-use-cases.md)
+- [Environment Variables](./ENVIRONMENT_VARIABLES.md)
+- [Metric Naming Standards](./METRIC_NAMING_STANDARD.md)
 - [New Relic Dashboards](../shared/newrelic/dashboards/)
-- [Module Configs](../modules/)
-- [Troubleshooting Scripts](../shared/newrelic/scripts/)
+- [Module Configurations](../modules/)
+- [Root Makefile](../Makefile) - All available commands

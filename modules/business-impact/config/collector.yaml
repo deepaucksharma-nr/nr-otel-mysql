@@ -7,11 +7,18 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  # Memory management
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
   batch:
     timeout: 1s
     send_batch_size: 1024
 
   transform/business_impact:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
@@ -21,44 +28,45 @@ processors:
           - set(attributes["revenue_impact"], "none")
           
           # Revenue-impacting queries (orders, payments, transactions)
-          - set(attributes["business_impact_score"], 10.0) where IsMatch(attributes["db.statement"], "(?i).*(order|payment|transaction|invoice|billing|subscription|purchase|sale|revenue|checkout).*")
+          - set(attributes["business_impact_score"], ${env:REVENUE_IMPACT_SCORE:-10.0}) where IsMatch(attributes["db.statement"], "(?i).*(order|payment|transaction|invoice|billing|subscription|purchase|sale|revenue|checkout).*")
           - set(attributes["business_category"], "revenue") where IsMatch(attributes["db.statement"], "(?i).*(order|payment|transaction|invoice|billing|subscription|purchase|sale|revenue|checkout).*")
           - set(attributes["revenue_impact"], "direct") where IsMatch(attributes["db.statement"], "(?i).*(order|payment|transaction|invoice|billing|subscription|purchase|sale|revenue|checkout).*")
           
           # Customer-facing operations
-          - set(attributes["business_impact_score"], 8.0) where IsMatch(attributes["db.statement"], "(?i).*(customer|user|account|profile|session|authentication|login|cart|wishlist).*") and attributes["business_impact_score"] < 8.0
+          - set(attributes["business_impact_score"], ${env:CUSTOMER_IMPACT_SCORE:-8.0}) where IsMatch(attributes["db.statement"], "(?i).*(customer|user|account|profile|session|authentication|login|cart|wishlist).*") and attributes["business_impact_score"] < ${env:CUSTOMER_IMPACT_SCORE:-8.0}
           - set(attributes["business_category"], "customer") where IsMatch(attributes["db.statement"], "(?i).*(customer|user|account|profile|session|authentication|login|cart|wishlist).*") and attributes["business_category"] == "general"
           - set(attributes["revenue_impact"], "indirect") where IsMatch(attributes["db.statement"], "(?i).*(customer|user|account|profile|session|authentication|login|cart|wishlist).*") and attributes["revenue_impact"] == "none"
           
           # Inventory and fulfillment operations
-          - set(attributes["business_impact_score"], 7.0) where IsMatch(attributes["db.statement"], "(?i).*(inventory|stock|product|catalog|fulfillment|shipping|delivery|warehouse).*") and attributes["business_impact_score"] < 7.0
+          - set(attributes["business_impact_score"], ${env:OPERATIONS_IMPACT_SCORE:-7.0}) where IsMatch(attributes["db.statement"], "(?i).*(inventory|stock|product|catalog|fulfillment|shipping|delivery|warehouse).*") and attributes["business_impact_score"] < ${env:OPERATIONS_IMPACT_SCORE:-7.0}
           - set(attributes["business_category"], "operations") where IsMatch(attributes["db.statement"], "(?i).*(inventory|stock|product|catalog|fulfillment|shipping|delivery|warehouse).*") and attributes["business_category"] == "general"
           
           # Analytics and reporting
-          - set(attributes["business_impact_score"], 5.0) where IsMatch(attributes["db.statement"], "(?i).*(report|analytics|metric|dashboard|aggregate|summary|statistics).*") and attributes["business_impact_score"] < 5.0
+          - set(attributes["business_impact_score"], ${env:ANALYTICS_IMPACT_SCORE:-5.0}) where IsMatch(attributes["db.statement"], "(?i).*(report|analytics|metric|dashboard|aggregate|summary|statistics).*") and attributes["business_impact_score"] < ${env:ANALYTICS_IMPACT_SCORE:-5.0}
           - set(attributes["business_category"], "analytics") where IsMatch(attributes["db.statement"], "(?i).*(report|analytics|metric|dashboard|aggregate|summary|statistics).*") and attributes["business_category"] == "general"
           
           # Administrative operations
-          - set(attributes["business_impact_score"], 3.0) where IsMatch(attributes["db.statement"], "(?i).*(admin|config|setting|log|audit|backup|maintenance).*") and attributes["business_impact_score"] < 3.0
+          - set(attributes["business_impact_score"], ${env:ADMIN_IMPACT_SCORE:-3.0}) where IsMatch(attributes["db.statement"], "(?i).*(admin|config|setting|log|audit|backup|maintenance).*") and attributes["business_impact_score"] < ${env:ADMIN_IMPACT_SCORE:-3.0}
           - set(attributes["business_category"], "admin") where IsMatch(attributes["db.statement"], "(?i).*(admin|config|setting|log|audit|backup|maintenance).*") and attributes["business_category"] == "general"
           
           # Boost score for critical operations
-          - set(attributes["business_impact_score"], attributes["business_impact_score"] * 1.5) where IsMatch(attributes["db.operation"], "(?i)(update|delete|insert)") and attributes["business_category"] == "revenue"
-          - set(attributes["business_impact_score"], attributes["business_impact_score"] * 1.3) where IsMatch(attributes["db.operation"], "(?i)(update|delete|insert)") and attributes["business_category"] == "customer"
+          - set(attributes["business_impact_score"], attributes["business_impact_score"] * ${env:REVENUE_BOOST_FACTOR:-1.5}) where IsMatch(attributes["db.operation"], "(?i)(update|delete|insert)") and attributes["business_category"] == "revenue"
+          - set(attributes["business_impact_score"], attributes["business_impact_score"] * ${env:CUSTOMER_BOOST_FACTOR:-1.3}) where IsMatch(attributes["db.operation"], "(?i)(update|delete|insert)") and attributes["business_category"] == "customer"
           
-          # Cap the score at 10
-          - set(attributes["business_impact_score"], 10.0) where attributes["business_impact_score"] > 10.0
+          # Cap the score at configured maximum
+          - set(attributes["business_impact_score"], ${env:MAX_IMPACT_SCORE:-10.0}) where attributes["business_impact_score"] > ${env:MAX_IMPACT_SCORE:-10.0}
           
           # Add SLA impact based on duration
-          - set(attributes["sla_impact"], "critical") where metric.name == "db.client.operation.duration" and value > 5.0
-          - set(attributes["sla_impact"], "warning") where metric.name == "db.client.operation.duration" and value > 2.0 and value <= 5.0
-          - set(attributes["sla_impact"], "normal") where metric.name == "db.client.operation.duration" and value <= 2.0
+          - set(attributes["sla_impact"], "critical") where metric.name == "db.client.operation.duration" and value > ${env:SLA_CRITICAL_THRESHOLD:-5.0}
+          - set(attributes["sla_impact"], "warning") where metric.name == "db.client.operation.duration" and value > ${env:SLA_WARNING_THRESHOLD:-2.0} and value <= ${env:SLA_CRITICAL_THRESHOLD:-5.0}
+          - set(attributes["sla_impact"], "normal") where metric.name == "db.client.operation.duration" and value <= ${env:SLA_WARNING_THRESHOLD:-2.0}
           
           # Add business-critical table identification
           - set(attributes["critical_table"], true) where IsMatch(attributes["db.sql.table"], "(?i).*(order|payment|user|customer|transaction|invoice|product|inventory).*")
           - set(attributes["critical_table"], false) where !IsMatch(attributes["db.sql.table"], "(?i).*(order|payment|user|customer|transaction|invoice|product|inventory).*")
 
   transform/create_metrics:
+    error_mode: ignore
     metric_statements:
       - context: scope
         statements:
@@ -111,6 +119,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: 
+        - memory_limiter
         - batch
         - transform/business_impact
         - transform/create_metrics

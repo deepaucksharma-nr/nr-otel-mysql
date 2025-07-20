@@ -324,7 +324,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT wait.anomaly_score as 'Wait Anomaly', mysql.cpu.utilization as 'CPU %', mysql.buffer_pool.usage as 'Buffer Pool %' FROM MySQLWaitAnalysis, Metric WHERE entity.type = 'MYSQL_INSTANCE' SINCE 30 minutes ago"
+                "query": "SELECT wait.anomaly_score as 'Wait Anomaly', mysql.cpu.utilization as 'CPU %', mysql.buffer_pool.usage as 'Buffer Pool %' FROM MySQLWaitAnalysis, Metric WHERE instrumentation.provider = 'opentelemetry' SINCE 30 minutes ago"
               }
             ]
           }
