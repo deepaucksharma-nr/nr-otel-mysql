@@ -1,6 +1,6 @@
 {
   "name": "MySQL Intelligence - Maximum Value Dashboard",
-  "description": "Comprehensive MySQL monitoring with business impact, ML insights, and automated recommendations",
+  "description": "Comprehensive MySQL monitoring with business impact, statistical insights, and automated recommendations",
   "permissions": "PUBLIC_READ_WRITE",
   "pages": [
     {
@@ -58,7 +58,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT average(100 - (ml.composite_score * 10)) as 'Fleet Health' FROM Metric WHERE instrumentation.provider = 'opentelemetry' AND metricName = 'mysql.health.score' SINCE 5 minutes ago"
+                "query": "SELECT average(100 - (statistics.composite_score * 10)) as 'Fleet Health' FROM Metric WHERE instrumentation.provider = 'opentelemetry' AND metricName = 'mysql.health.score' SINCE 5 minutes ago"
               }
             ],
             "thresholds": [
@@ -148,7 +148,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT predictLinear(average(ml.risk_prediction), 3600) as 'Predicted Risk (1hr)', average(ml.risk_prediction) as 'Current Risk' FROM Metric WHERE instrumentation.provider = 'opentelemetry' TIMESERIES 5 minutes SINCE 6 hours ago EXTRAPOLATE"
+                "query": "SELECT predictLinear(average(statistics.risk_prediction), 3600) as 'Predicted Risk (1hr)', average(statistics.risk_prediction) as 'Current Risk' FROM Metric WHERE instrumentation.provider = 'opentelemetry' TIMESERIES 5 minutes SINCE 6 hours ago EXTRAPOLATE"
               }
             ],
             "yAxisLeft": {
@@ -160,7 +160,7 @@
     },
     {
       "name": "Intelligence Command Center",
-      "description": "AI-powered insights and recommendations",
+      "description": "Advanced statistical insights and recommendations",
       "widgets": [
         {
           "title": "Top Intelligence Issues",
@@ -183,7 +183,7 @@
           }
         },
         {
-          "title": "ML Anomaly Detection Timeline",
+          "title": "Statistical Anomaly Detection Timeline",
           "layout": {
             "column": 1,
             "row": 4,
@@ -197,7 +197,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT ml.anomaly_score, ml.confidence FROM Metric WHERE attributes['ml.is_anomaly'] = 'true' AND instrumentation.provider = 'opentelemetry' FACET anomaly_type, ml.algorithm TIMESERIES 1 minute SINCE 2 hours ago"
+                "query": "SELECT statistics.anomaly_score, statistics.confidence FROM Metric WHERE attributes['statistics.is_anomaly'] = 'true' AND instrumentation.provider = 'opentelemetry' FACET anomaly_type, statistics.algorithm TIMESERIES 1 minute SINCE 2 hours ago"
               }
             ],
             "yAxisLeft": {
@@ -376,7 +376,7 @@
     },
     {
       "name": "Predictive Analytics",
-      "description": "ML-powered predictions and forecasting",
+      "description": "Statistical predictions and forecasting",
       "widgets": [
         {
           "title": "Query Performance Prediction",
@@ -433,7 +433,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT timestamp, anomaly_type, ml.anomaly_score, ml.confidence, predictLinear(ml.anomaly_score, 1800) as 'Predicted Score (30min)' FROM Metric WHERE ml.is_anomaly = true OR predictLinear(ml.anomaly_score, 1800) > 3 SINCE 2 hours ago LIMIT 100"
+                "query": "SELECT timestamp, anomaly_type, statistics.anomaly_score, statistics.confidence, predictLinear(statistics.anomaly_score, 1800) as 'Predicted Score (30min)' FROM Metric WHERE statistics.is_anomaly = true OR predictLinear(statistics.anomaly_score, 1800) > 3 SINCE 2 hours ago LIMIT 100"
               }
             ]
           }
@@ -571,7 +571,7 @@
             "nrqlQueries": [
               {
                 "accountId": "${NEW_RELIC_ACCOUNT_ID}",
-                "query": "SELECT count(*) FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' FACET attributes['ml.workload_type'], attributes['business_category'], attributes['db_schema'] SINCE 1 hour ago"
+                "query": "SELECT count(*) FROM Metric WHERE metricName = 'mysql.intelligence.comprehensive' FACET attributes['statistics.workload_type'], attributes['business_category'], attributes['db_schema'] SINCE 1 hour ago"
               }
             ]
           }

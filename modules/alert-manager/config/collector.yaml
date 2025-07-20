@@ -167,15 +167,11 @@ exporters:
       max_interval: 30s
 
 extensions:
-  # Health check extension
-  health_check:
-    endpoint: 0.0.0.0:13134
-    path: /health
-    check_collector_pipeline:
-      enabled: true
-      interval: 10s
-      exporter_failure_threshold: 5
-
+  # WARNING: DO NOT ADD health_check extension here!
+  # Health checks have been intentionally removed from production code.
+  # Use shared/validation/health-check-all.sh for validation purposes.
+  # See shared/validation/README-health-check.md for details.
+  
   # Performance profiler
   pprof:
     endpoint: 0.0.0.0:1777
@@ -187,7 +183,9 @@ extensions:
     size_mib: 128
 
 service:
-  extensions: [health_check, pprof, memory_ballast]
+  # WARNING: DO NOT ADD health_check to extensions list!
+  # Health checks are validation-only, not production features.
+  extensions: [pprof, memory_ballast]  # NO health_check here!
   
   pipelines:
     # Main alert processing pipeline - receives alerts via OTLP

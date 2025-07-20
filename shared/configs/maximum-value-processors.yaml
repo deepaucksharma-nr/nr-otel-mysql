@@ -39,31 +39,31 @@ processors:
                         attributes["query.inefficiency_score"])) / 2)
             where attributes["resource.waste_percent"] != nil
 
-  # Advanced ML Scoring
-  transform/ml_intelligence_maximizer:
+  # Advanced Statistical Scoring
+  transform/statistical_intelligence_maximizer:
     error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
           # Composite anomaly score with multiple signals
-          - set(attributes["ml.composite_score"], 
+          - set(attributes["statistics.composite_score"], 
                 (
-                  attributes["ml.anomaly_score"] * 0.3 +
+                  attributes["statistics.anomaly_score"] * 0.3 +
                   attributes["business_impact_score"] * 0.25 +
                   attributes["wait.severity_score"] * 0.2 +
                   attributes["resource.pressure_score"] * 0.15 +
                   attributes["replication.health_deviation"] * 0.1
                 ))
-            where attributes["ml.anomaly_score"] != nil
+            where attributes["statistics.anomaly_score"] != nil
           
           # Predictive risk calculation
-          - set(attributes["ml.risk_prediction"], 
-                attributes["ml.composite_score"] * 
+          - set(attributes["statistics.risk_prediction"], 
+                attributes["statistics.composite_score"] * 
                 (1 + attributes["trend.acceleration"] * 0.5))
             where attributes["trend.acceleration"] != nil
           
           # Pattern confidence scoring
-          - set(attributes["ml.pattern_confidence"], 
+          - set(attributes["statistics.pattern_confidence"], 
                 Case(
                   attributes["historical_exec_count"] > 10000, 0.95,
                   attributes["historical_exec_count"] > 1000, 0.85,
@@ -73,12 +73,12 @@ processors:
                 ))
           
           # Anomaly severity classification
-          - set(attributes["ml.anomaly_severity"], 
+          - set(attributes["statistics.anomaly_severity"], 
                 Case(
-                  attributes["ml.composite_score"] > 8, "critical",
-                  attributes["ml.composite_score"] > 6, "high",
-                  attributes["ml.composite_score"] > 4, "medium",
-                  attributes["ml.composite_score"] > 2, "low",
+                  attributes["statistics.composite_score"] > 8, "critical",
+                  attributes["statistics.composite_score"] > 6, "high",
+                  attributes["statistics.composite_score"] > 4, "medium",
+                  attributes["statistics.composite_score"] > 2, "low",
                   "none"
                 ))
 
@@ -150,8 +150,8 @@ processors:
           # Root cause probability
           - set(attributes["rootcause.probability"], 
                 attributes["correlation.strength"] * 
-                attributes["ml.anomaly_score"] / 10)
-            where attributes["ml.anomaly_score"] != nil
+                attributes["statistics.anomaly_score"] / 10)
+            where attributes["statistics.anomaly_score"] != nil
 
   # Predictive Analytics Enhancement
   transform/predictive_maximizer:
@@ -178,7 +178,7 @@ processors:
           - set(attributes["performance.degradation_risk"], 
                 attributes["trend.acceleration"] * 
                 attributes["resource.pressure_score"] * 
-                attributes["ml.pattern_confidence"])
+                attributes["statistics.pattern_confidence"])
             where attributes["resource.pressure_score"] != nil
 
   # Cost Optimization Calculator
@@ -233,7 +233,7 @@ processors:
                   attributes["query.efficiency_score"] < 10 AND
                   attributes["executions_per_hour"] > 1000, "rewrite_query",
                   
-                  attributes["ml.anomaly_severity"] == "critical", "investigate_anomaly",
+                  attributes["statistics.anomaly_severity"] == "critical", "investigate_anomaly",
                   
                   attributes["capacity.hours_to_exhaustion"] < 24, "scale_resources",
                   
@@ -246,14 +246,14 @@ processors:
                   attributes["business.revenue_impact_realtime"] > 10000, 100,
                   attributes["business.revenue_impact_realtime"] > 1000, 80,
                   attributes["sla_impact"] == "violation", 70,
-                  attributes["ml.anomaly_severity"] == "critical", 60,
+                  attributes["statistics.anomaly_severity"] == "critical", 60,
                   attributes["cost.per_hour"] > 100, 50,
                   10
                 ))
           
           # Automation confidence
           - set(attributes["automation.confidence"], 
-                attributes["ml.pattern_confidence"] * 
+                attributes["statistics.pattern_confidence"] * 
                 attributes["correlation.strength"])
 
   # Dashboard Optimization Metadata
@@ -266,7 +266,7 @@ processors:
           - set(attributes["dashboard.primary"], 
                 Case(
                   attributes["business_criticality"] IN ("CRITICAL", "HIGH"), "executive",
-                  attributes["ml.anomaly_severity"] IN ("critical", "high"), "intelligence",
+                  attributes["statistics.anomaly_severity"] IN ("critical", "high"), "intelligence",
                   attributes["action.type"] != "none", "actions",
                   attributes["correlation.strength"] > 0.7, "correlation",
                   "operational"
@@ -278,7 +278,7 @@ processors:
                   attributes["trend.acceleration"] != nil, "timeseries",
                   attributes["correlation.strength"] > 0.5, "heatmap",
                   attributes["business_category"] != nil, "pie",
-                  attributes["ml.anomaly_score"] > 0, "scatter",
+                  attributes["statistics.anomaly_score"] > 0, "scatter",
                   "table"
                 ))
           

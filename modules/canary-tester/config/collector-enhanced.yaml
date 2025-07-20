@@ -275,8 +275,10 @@ exporters:
       max_backups: 3
 
 extensions:
-  health_check:
-    endpoint: 0.0.0.0:13133
+  # WARNING: DO NOT ADD health_check extension here!
+  # Health checks have been intentionally removed from production code.
+  # Use shared/validation/health-check-all.sh for validation purposes.
+  # See shared/validation/README-health-check.md for details.
   
   pprof:
     endpoint: 0.0.0.0:1777
@@ -290,8 +292,9 @@ extensions:
     timeout: 10s
 
 service:
-  extensions: [health_check, pprof, zpages, file_storage/baselines]
-  
+  # WARNING: DO NOT ADD health_check to extensions list!
+  # Health checks are validation-only, not production features.
+  extensions: [pprof, zpages, file_storage/baselines]  # NO health_check here!pprof, zpages, file_storage/baselines
   pipelines:
     # Main canary metrics
     metrics:

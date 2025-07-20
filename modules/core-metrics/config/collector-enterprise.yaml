@@ -219,13 +219,11 @@ exporters:
       max_backups: 3
 
 extensions:
+  # WARNING: DO NOT ADD health_check extension here!
+  # Health checks have been intentionally removed from production code.
+  # Use shared/validation/health-check-all.sh for validation purposes.
+  # See shared/validation/README-health-check.md for details.
   # Health check with comprehensive pipeline monitoring
-  health_check:
-    endpoint: 0.0.0.0:13133
-    check_collector_pipeline:
-      enabled: true
-      interval: 30s
-      exporter_failure_threshold: 3
 
   # Performance profiling
   pprof:
@@ -258,8 +256,9 @@ extensions:
       rebound_trigger_threshold_mib: 5
 
 service:
-  extensions: [health_check, pprof, zpages, file_storage/standard, file_storage/critical]
-  
+  # WARNING: DO NOT ADD health_check to extensions list!
+  # Health checks are validation-only, not production features.
+  extensions: [pprof, zpages, file_storage/standard, file_storage/critical]  # NO health_check here!pprof, zpages, file_storage/standard, file_storage/critical
   pipelines:
     # Standard pipeline for regular metrics
     metrics/standard:

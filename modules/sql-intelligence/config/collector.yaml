@@ -1,4 +1,8 @@
+# SQL Intelligence - Consolidated Configuration
+# Comprehensive query performance analysis and SQL intelligence metrics
+
 receivers:
+  # Query performance metrics
   sqlquery/slow_queries:
     driver: mysql
     datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
@@ -13,16 +17,25 @@ receivers:
             SUM_TIMER_WAIT/1000000000 as total_latency_ms,
             AVG_TIMER_WAIT/1000000000 as avg_latency_ms,
             MAX_TIMER_WAIT/1000000000 as max_latency_ms,
+            MIN_TIMER_WAIT/1000000000 as min_latency_ms,
             SUM_ROWS_EXAMINED as rows_examined_total,
+            AVG_ROWS_EXAMINED as rows_examined_avg,
             SUM_ROWS_SENT as rows_sent_total,
+            AVG_ROWS_SENT as rows_sent_avg,
             SUM_NO_INDEX_USED as no_index_used_count,
-            SUM_NO_GOOD_INDEX_USED as no_good_index_count
+            SUM_NO_GOOD_INDEX_USED as no_good_index_count,
+            SUM_SORT_ROWS as sort_rows_total,
+            SUM_SORT_SCAN as sort_scan_count,
+            SUM_CREATED_TMP_TABLES as tmp_tables_created,
+            SUM_CREATED_TMP_DISK_TABLES as tmp_disk_tables_created,
+            FIRST_SEEN,
+            LAST_SEEN
           FROM performance_schema.events_statements_summary_by_digest
           WHERE SCHEMA_NAME IS NOT NULL
             AND DIGEST_TEXT NOT LIKE '%performance_schema%'
             AND COUNT_STAR > 0
           ORDER BY total_latency_ms DESC
-          LIMIT 20
+          LIMIT 50
         metrics:
           - metric_name: mysql.query.exec_total
             value_column: exec_count
@@ -36,13 +49,38 @@ receivers:
           - metric_name: mysql.query.latency_max_ms
             value_column: max_latency_ms
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.latency_min_ms
+            value_column: min_latency_ms
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
           - metric_name: mysql.query.rows_examined_total
             value_column: rows_examined_total
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.rows_examined_avg
+            value_column: rows_examined_avg
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.rows_sent_total
+            value_column: rows_sent_total
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.rows_sent_avg
+            value_column: rows_sent_avg
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
           - metric_name: mysql.query.no_index_used_total
             value_column: no_index_used_count
             attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.sort_rows_total
+            value_column: sort_rows_total
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.sort_scan_count
+            value_column: sort_scan_count
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.tmp_tables_created
+            value_column: tmp_tables_created
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
+          - metric_name: mysql.query.tmp_disk_tables_created
+            value_column: tmp_disk_tables_created
+            attribute_columns: [DIGEST, SCHEMA_NAME, DIGEST_TEXT]
   
+  # Table I/O statistics
   sqlquery/table_stats:
     driver: mysql
     datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
@@ -57,11 +95,13 @@ receivers:
             SUM_TIMER_MISC/1000000000 as misc_latency_ms,
             COUNT_READ as read_count,
             COUNT_WRITE as write_count,
-            COUNT_MISC as misc_count
+            COUNT_MISC as misc_count,
+            COUNT_STAR as total_io_ops,
+            SUM_TIMER_WAIT/1000000000 as total_latency_ms
           FROM performance_schema.table_io_waits_summary_by_table
           WHERE OBJECT_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
-          ORDER BY (SUM_TIMER_READ + SUM_TIMER_WRITE) DESC
-          LIMIT 20
+          ORDER BY total_latency_ms DESC
+          LIMIT 50
         metrics:
           - metric_name: mysql.table.io.read.latency_ms
             value_column: read_latency_ms
@@ -69,13 +109,23 @@ receivers:
           - metric_name: mysql.table.io.write.latency_ms
             value_column: write_latency_ms
             attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
+          - metric_name: mysql.table.io.misc.latency_ms
+            value_column: misc_latency_ms
+            attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
           - metric_name: mysql.table.io.read.count
             value_column: read_count
             attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
           - metric_name: mysql.table.io.write.count
             value_column: write_count
             attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
+          - metric_name: mysql.table.io.total.count
+            value_column: total_io_ops
+            attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
+          - metric_name: mysql.table.io.total.latency_ms
+            value_column: total_latency_ms
+            attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
 
+  # Index usage and efficiency
   sqlquery/index_usage:
     driver: mysql
     datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
@@ -83,50 +133,140 @@ receivers:
     queries:
       - sql: |
           SELECT 
-            TABLE_SCHEMA,
-            TABLE_NAME,
-            INDEX_NAME,
-            CARDINALITY,
-            SEQ_IN_INDEX
-          FROM information_schema.STATISTICS
-          WHERE TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
-            AND INDEX_NAME != 'PRIMARY'
-          ORDER BY CARDINALITY DESC
-          LIMIT 50
+            s.TABLE_SCHEMA,
+            s.TABLE_NAME,
+            s.INDEX_NAME,
+            s.CARDINALITY,
+            t.TABLE_ROWS,
+            CASE 
+              WHEN t.TABLE_ROWS > 0 THEN s.CARDINALITY / t.TABLE_ROWS 
+              ELSE 0 
+            END as selectivity
+          FROM information_schema.STATISTICS s
+          JOIN information_schema.TABLES t 
+            ON s.TABLE_SCHEMA = t.TABLE_SCHEMA 
+            AND s.TABLE_NAME = t.TABLE_NAME
+          WHERE s.TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+            AND s.SEQ_IN_INDEX = 1
+          ORDER BY t.TABLE_ROWS DESC
+          LIMIT 100
         metrics:
           - metric_name: mysql.index.cardinality
             value_column: CARDINALITY
             attribute_columns: [TABLE_SCHEMA, TABLE_NAME, INDEX_NAME]
+          - metric_name: mysql.index.selectivity
+            value_column: selectivity
+            attribute_columns: [TABLE_SCHEMA, TABLE_NAME, INDEX_NAME]
+          - metric_name: mysql.table.rows
+            value_column: TABLE_ROWS
+            attribute_columns: [TABLE_SCHEMA, TABLE_NAME]
 
-  # Optional: Pull metrics from core-metrics if available
-  prometheus:
+  # Table lock statistics
+  sqlquery/table_locks:
+    driver: mysql
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/performance_schema"
+    collection_interval: 30s
+    queries:
+      - sql: |
+          SELECT 
+            OBJECT_SCHEMA,
+            OBJECT_NAME,
+            COUNT_READ as read_locks,
+            COUNT_WRITE as write_locks,
+            SUM_TIMER_READ/1000000000 as read_lock_wait_ms,
+            SUM_TIMER_WRITE/1000000000 as write_lock_wait_ms,
+            COUNT_READ_NORMAL + COUNT_READ_WITH_SHARED_LOCKS as shared_locks,
+            COUNT_WRITE_ALLOW_WRITE + COUNT_WRITE_CONCURRENT_INSERT + 
+            COUNT_WRITE_LOW_PRIORITY + COUNT_WRITE_NORMAL as exclusive_locks
+          FROM performance_schema.table_lock_waits_summary_by_table
+          WHERE OBJECT_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+            AND (COUNT_READ > 0 OR COUNT_WRITE > 0)
+          ORDER BY (SUM_TIMER_READ + SUM_TIMER_WRITE) DESC
+          LIMIT 50
+        metrics:
+          - metric_name: mysql.table.locks.read.count
+            value_column: read_locks
+            attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
+          - metric_name: mysql.table.locks.write.count
+            value_column: write_locks
+            attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
+          - metric_name: mysql.table.locks.read.wait_ms
+            value_column: read_lock_wait_ms
+            attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
+          - metric_name: mysql.table.locks.write.wait_ms
+            value_column: write_lock_wait_ms
+            attribute_columns: [OBJECT_SCHEMA, OBJECT_NAME]
+
+  # Schema object statistics
+  sqlquery/schema_stats:
+    driver: mysql
+    datasource: "${env:MYSQL_USER}:${env:MYSQL_PASSWORD}@tcp(${env:MYSQL_ENDPOINT})/information_schema"
+    collection_interval: 300s
+    queries:
+      - sql: |
+          SELECT 
+            TABLE_SCHEMA,
+            COUNT(DISTINCT TABLE_NAME) as table_count,
+            SUM(DATA_LENGTH + INDEX_LENGTH)/1024/1024 as total_size_mb,
+            SUM(DATA_LENGTH)/1024/1024 as data_size_mb,
+            SUM(INDEX_LENGTH)/1024/1024 as index_size_mb,
+            SUM(TABLE_ROWS) as total_rows
+          FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'information_schema', 'sys')
+            AND TABLE_TYPE = 'BASE TABLE'
+          GROUP BY TABLE_SCHEMA
+        metrics:
+          - metric_name: mysql.schema.table_count
+            value_column: table_count
+            attribute_columns: [TABLE_SCHEMA]
+          - metric_name: mysql.schema.size_mb
+            value_column: total_size_mb
+            attribute_columns: [TABLE_SCHEMA]
+          - metric_name: mysql.schema.data_size_mb
+            value_column: data_size_mb
+            attribute_columns: [TABLE_SCHEMA]
+          - metric_name: mysql.schema.index_size_mb
+            value_column: index_size_mb
+            attribute_columns: [TABLE_SCHEMA]
+          - metric_name: mysql.schema.rows_total
+            value_column: total_rows
+            attribute_columns: [TABLE_SCHEMA]
+
+  # Pull metrics from core-metrics for enrichment
+  prometheus/core_metrics:
     config:
       scrape_configs:
-        - job_name: 'metrics-federation'
+        - job_name: 'core-metrics-federation'
           scrape_interval: 30s
           static_configs:
-            - targets: ['${env:METRICS_ENDPOINT}']
+            - targets: ['${env:CORE_METRICS_ENDPOINT:-core-metrics:8081}']
           metric_relabel_configs:
             - source_labels: [__name__]
               regex: 'mysql_.*'
               action: keep
 
+  # OTLP receiver for external metrics
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
-  # Memory management
+  # Memory management - always first
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
     spike_limit_percentage: 30
 
-  batch/standard:
+  batch:
     timeout: 10s
     send_batch_size: 1000
-
-  batch/critical:
-    timeout: 2s
-    send_batch_size: 100
+    send_batch_max_size: 1500
   
-  attributes/sql_intelligence:
+  # Core attributes
+  attributes:
     actions:
       - key: module
         value: sql-intelligence
@@ -144,17 +284,20 @@ processors:
         value: intelligence
         action: insert
 
-  resource/standard:
+  resource:
     attributes:
       - key: service.name
         value: sql-intelligence
         action: upsert
       - key: service.version
-        value: 2.0.0
+        value: "2.0.0"
+        action: upsert
+      - key: deployment.environment
+        value: ${env:ENVIRONMENT}
         action: upsert
   
-  # New Relic specific attributes for standard pipeline
-  attributes/newrelic_standard:
+  # New Relic specific attributes
+  attributes/newrelic:
     actions:
       - key: newrelic.source
         value: opentelemetry
@@ -163,35 +306,10 @@ processors:
         value: mysql-sql-intelligence-collector
         action: insert
       - key: instrumentation.version
-        value: 2.0.0
+        value: "2.0.0"
         action: insert
       - key: instrumentation.provider
         value: opentelemetry
-        action: insert
-      - key: pipeline.type
-        value: standard
-        action: insert
-
-  # New Relic specific attributes for critical pipeline
-  attributes/newrelic_critical:
-    actions:
-      - key: newrelic.source
-        value: opentelemetry
-        action: insert
-      - key: instrumentation.name
-        value: mysql-sql-intelligence-collector
-        action: insert
-      - key: instrumentation.version
-        value: 2.0.0
-        action: insert
-      - key: instrumentation.provider
-        value: opentelemetry
-        action: insert
-      - key: pipeline.type
-        value: critical
-        action: insert
-      - key: priority
-        value: high
         action: insert
 
   # Entity synthesis for New Relic One
@@ -210,10 +328,23 @@ processors:
         value: "true"
         action: insert
   
+  # Transform processor for query analysis
+  transform/query_analysis:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        statements:
+          # Calculate query efficiency ratio
+          - set(attributes["query_efficiency"], attributes["rows_sent_avg"] / attributes["rows_examined_avg"]) where attributes["rows_examined_avg"] > 0 and name == "mysql.query.rows_examined_avg"
+          # Mark slow queries
+          - set(attributes["is_slow_query"], "true") where name == "mysql.query.latency_avg_ms" and value > 1000
+          # Mark queries needing indexes
+          - set(attributes["needs_index"], "true") where name == "mysql.query.no_index_used_total" and value > 0
+  
 
 exporters:
-  # Standard New Relic exporter with compression
-  otlphttp/newrelic_standard:
+  # Primary New Relic OTLP exporter
+  otlphttp/newrelic:
     endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
     headers:
       api-key: ${env:NEW_RELIC_LICENSE_KEY}
@@ -229,86 +360,59 @@ exporters:
       num_consumers: 5
       queue_size: 10000
 
-  # Critical New Relic exporter without compression
-  otlphttp/newrelic_critical:
-    endpoint: ${env:NEW_RELIC_OTLP_ENDPOINT}
-    headers:
-      api-key: ${env:NEW_RELIC_LICENSE_KEY}
-    compression: none
-    timeout: 10s
-    retry_on_failure:
-      enabled: true
-      initial_interval: 2s
-      max_interval: 20s
-      max_elapsed_time: 120s
-    sending_queue:
-      enabled: true
-      num_consumers: 3
-      queue_size: 5000
-  
-  debug:
-    verbosity: basic
-
+  # Prometheus exporter for federation
   prometheus:
-    endpoint: "0.0.0.0:8082"
-    namespace: sql_intelligence
+    endpoint: 0.0.0.0:8082
+    namespace: mysql
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 5m
     const_labels:
       module: sql-intelligence
-      cluster: ${env:CLUSTER_NAME}
 
-extensions:
-  health_check:
-    endpoint: 0.0.0.0:13133
-    check_collector_pipeline:
-      enabled: true
-      interval: 30s
-      exporter_failure_threshold: 3
-
-  pprof:
-    endpoint: 0.0.0.0:1777
+  # Debug exporter
+  debug:
+    verbosity: basic
+    sampling_initial: 10
+    sampling_thereafter: 100
 
 service:
-  extensions: [health_check, pprof]
-  
   pipelines:
-    # Standard pipeline for all SQL intelligence metrics
-    metrics/standard:
-      receivers: [sqlquery/slow_queries, sqlquery/table_stats, sqlquery/index_usage]
+    # Single comprehensive pipeline
+    metrics:
+      receivers: [
+        sqlquery/slow_queries,
+        sqlquery/table_stats,
+        sqlquery/index_usage,
+        sqlquery/table_locks,
+        sqlquery/schema_stats,
+        prometheus/core_metrics,
+        otlp
+      ]
       processors: [
         memory_limiter,
-        batch/standard,
-        attributes/sql_intelligence,
-        resource/standard,
-        attributes/newrelic_standard,
+        batch,
+        attributes,
+        resource,
+        transform/query_analysis,
+        attributes/newrelic,
         attributes/entity_synthesis
       ]
-      exporters: [otlphttp/newrelic_standard, prometheus, debug]
-    
-    # Critical pipeline for high-priority SQL metrics (simulated)
-    metrics/critical:
-      receivers: [sqlquery/slow_queries, sqlquery/table_stats, sqlquery/index_usage]
-      processors: [
-        memory_limiter,
-        batch/critical,
-        attributes/sql_intelligence,
-        resource/standard,
-        attributes/newrelic_critical,
-        attributes/entity_synthesis
-      ]
-      exporters: [otlphttp/newrelic_critical]
-    
-    # Federation pipeline for consuming core metrics
-    metrics/federation:
-      receivers: [prometheus]
-      processors: [
-        memory_limiter,
-        batch/standard,
-        attributes/sql_intelligence,
-        attributes/newrelic_standard,
-        resource/standard
-      ]
-      exporters: [otlphttp/newrelic_standard]
+      exporters: [otlphttp/newrelic, prometheus, debug]
+
+  extensions: [zpages, pprof]
 
   telemetry:
     logs:
       level: info
+      output_paths: ["/tmp/logs/collector.log"]
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+
+extensions:
+  zpages:
+    endpoint: 0.0.0.0:55679
+    
+  pprof:
+    endpoint: 0.0.0.0:6060

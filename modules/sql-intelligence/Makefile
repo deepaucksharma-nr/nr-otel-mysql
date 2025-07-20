@@ -1,7 +1,14 @@
 MODULE_NAME = sql-intelligence
 PORT = 8082
 
+# WARNING: DO NOT ADD health check targets to this Makefile!
+# Health checks have been intentionally removed from production code.
+# Use shared/validation/health-check-all.sh for validation purposes.
+# See shared/validation/README-health-check.md for details.
+
 .PHONY: build test run run-enhanced stop logs clean test-unit test-integration validate-enhanced help
+# WARNING: Do NOT add 'health' to .PHONY list!
+# Health checks are validation-only, not production targets.
 
 help:
 	@echo "SQL Intelligence Module - Available Commands:"
@@ -14,6 +21,8 @@ help:
 	@echo "  make clean           - Clean up containers and volumes"
 	@echo "  make test            - Run all tests"
 	@echo "  make validate-enhanced - Validate enhanced collector config"
+	# Health checks are available in shared/validation/ directory
+	# Use: ../shared/validation/health-check-all.sh
 
 build:
 	docker-compose build

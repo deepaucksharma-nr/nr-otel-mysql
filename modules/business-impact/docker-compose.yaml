@@ -1,26 +1,16 @@
 version: '3.8'
 
 services:
-  mysql-test:
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: test
-      MYSQL_DATABASE: testdb
-    ports:
-      - "3306"
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    
   business-impact:
+    # WARNING: DO NOT ADD healthcheck section here!
+    # Health checks have been intentionally removed from production Docker configs.
+    # Use shared/validation/health-check-all.sh for validation purposes.
+    # See shared/validation/README-health-check.md for details.
+    
     build: .
     environment:
       MODULE_NAME: business-impact
-      MYSQL_ENDPOINT: mysql-test:3306
-      MYSQL_USER: root
-      MYSQL_PASSWORD: test
+      # No MySQL dependency - this module processes metrics from other modules
       EXPORT_PORT: 8085
       OTEL_SERVICE_NAME: business-impact
       # New Relic Configuration
@@ -51,7 +41,7 @@ services:
       # Other endpoints
       OTLP_ENDPOINT: ${OTLP_ENDPOINT:-otel-collector:4317}
       # Override specific config if needed
-      COLLECTOR_CONFIG: ${COLLECTOR_CONFIG:-collector-enterprise-working.yaml}
+      COLLECTOR_CONFIG: ${COLLECTOR_CONFIG:-collector-functional.yaml}
     ports:
       - "8085:8085"      # Prometheus metrics
       - "8901:8889"      # OTLP gRPC debug
@@ -60,16 +50,15 @@ services:
       - "55683:55679"    # ZPages
       - "6062:6060"      # pprof
       - "8902:8888"      # Internal telemetry
-    depends_on:
-      mysql-test:
-        condition: service_healthy
+      # WARNING: DO NOT expose port 13133 (health check port)!
+      # Health check ports have been intentionally removed.
     volumes:
       - ./config:/etc/otel:ro
       - ./logs:/tmp/logs
       - business_reports:/tmp/business-reports
       - business_impact_queue_standard:/tmp/business-impact-queue-standard
       - business_impact_queue_critical:/tmp/business-impact-queue-critical
-    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector-enterprise-working.yaml}"]
+    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector-functional.yaml}"]
     deploy:
       resources:
         limits:
@@ -78,12 +67,6 @@ services:
         reservations:
           memory: 1G
           cpus: '1.0'
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 13133 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     networks:
       - db-intelligence
 

@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DASHBOARD_DIR="$SCRIPT_DIR/../dashboards"
+DASHBOARD_DIR="$SCRIPT_DIR/../dashboards/shared/newrelic/dashboards"
 NERDGRAPH_URL="https://api.newrelic.com/graphql"
 
 echo -e "${BLUE}🚀 Deploying Complete MySQL Monitoring Suite to New Relic${NC}"
@@ -44,7 +44,8 @@ declare -a dashboard_files=(
     "performance-advisor-newrelic-dashboard.json"
     "mysql-intelligence-dashboard.json"
     "database-intelligence-executive-dashboard.json"
-    "mysql-intelligence-maximum-value.json"
+    "plan-explorer-dashboard.json"
+    "simple-test-dashboard.json"
 )
 
 declare -a dashboard_descriptions=(
@@ -57,7 +58,8 @@ declare -a dashboard_descriptions=(
     "Performance Advisor - New Relic native"
     "Complete MySQL Intelligence - Updated patterns"
     "Executive Dashboard - Updated patterns"
-    "Maximum Value Dashboard - Updated patterns"
+    "Plan Explorer Dashboard - Query analysis"
+    "Simple Test Dashboard - Basic connectivity"
 )
 
 total_dashboards=${#dashboard_files[@]}
@@ -91,33 +93,16 @@ deploy_dashboard() {
     fi
     
     # Substitute environment variables
-    dashboard_json=$(echo "$dashboard_json" | sed "s/\\\${NEW_RELIC_ACCOUNT_ID}/$NEW_RELIC_ACCOUNT_ID/g")
+    dashboard_json=$(echo "$dashboard_json" | sed "s/\${NEW_RELIC_ACCOUNT_ID}/$NEW_RELIC_ACCOUNT_ID/g")
     
-    # Build GraphQL mutation
-    mutation='
-    mutation($accountId: Int!, $dashboard: DashboardInput!) {
-        dashboardCreate(accountId: $accountId, dashboard: $dashboard) {
-            entityResult {
-                guid
-                name
-            }
-            errors {
-                description
-                type
-            }
-        }
-    }'
-    
-    variables=$(jq -n \
-        --argjson accountId "$NEW_RELIC_ACCOUNT_ID" \
-        --argjson dashboard "$dashboard_json" \
-        '{accountId: $accountId, dashboard: $dashboard}')
+    # Build inline GraphQL mutation (avoids variable parsing issues)
+    query="mutation { dashboardCreate(accountId: $NEW_RELIC_ACCOUNT_ID, dashboard: $dashboard_json) { entityResult { guid name } errors { description type } } }"
     
     # Execute mutation
     response=$(curl -s -X POST "$NERDGRAPH_URL" \
         -H "Content-Type: application/json" \
         -H "API-Key: $NEW_RELIC_API_KEY" \
-        -d "{\"query\": \"$mutation\", \"variables\": $variables}")
+        -d "{\"query\": \"$query\"}")
     
     # Check for errors and success
     if echo "$response" | jq -e '.errors' > /dev/null 2>&1; then

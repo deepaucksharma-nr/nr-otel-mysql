@@ -2,6 +2,11 @@ version: '3.8'
 
 services:
   otel-collector:
+    # WARNING: DO NOT ADD healthcheck section here!
+    # Health checks have been intentionally removed from production Docker configs.
+    # Use shared/validation/health-check-all.sh for validation purposes.
+    # See shared/validation/README-health-check.md for details.
+    
     build: .
     container_name: resource-monitor-collector
     env_file:
@@ -43,7 +48,8 @@ services:
       - "4332:4318"     # OTLP HTTP receiver (changed from 4326)
       - "55686:55679"   # ZPages
       - "1782:1777"     # pprof
-      - "13138:13133"   # Health check (changed from 13135)
+      # WARNING: DO NOT expose port 13133 (health check port)!
+      # Health check ports have been intentionally removed.
     volumes:
       - ./config:/etc/otel:ro
       - ../../shared/config:/etc/shared:ro
@@ -68,12 +74,6 @@ services:
         reservations:
           memory: 512M
           cpus: '0.5'
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 13133 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
 volumes:
   resource_metrics:

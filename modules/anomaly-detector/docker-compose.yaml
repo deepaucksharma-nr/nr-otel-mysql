@@ -2,6 +2,11 @@ version: '3.8'
 
 services:
   anomaly-detector:
+    # WARNING: DO NOT ADD healthcheck section here!
+    # Health checks have been intentionally removed from production Docker configs.
+    # Use shared/validation/health-check-all.sh for validation purposes.
+    # See shared/validation/README-health-check.md for details.
+    
     build: .
     env_file:
       - ../../shared/config/service-endpoints.env
@@ -43,7 +48,7 @@ services:
       ANOMALY_BATCH_TIMEOUT: "5s"
       ANOMALY_BATCH_SIZE: "1000"
       # Override specific endpoints if needed
-      COLLECTOR_CONFIG: ${COLLECTOR_CONFIG:-collector-enterprise.yaml}
+      COLLECTOR_CONFIG: ${COLLECTOR_CONFIG:-collector-functional.yaml}
     ports:
       - "8084:8084"      # Prometheus metrics
       - "8892:8889"      # OTLP gRPC debug
@@ -52,6 +57,8 @@ services:
       - "55681:55679"    # ZPages
       - "1779:1777"      # pprof
       - "8894:8888"      # Internal telemetry
+      # WARNING: DO NOT expose port 13133 (health check port)!
+      # Health check ports have been intentionally removed.
     volumes:
       - ./config:/etc/otel:ro
       - ../../shared/config:/etc/shared:ro
@@ -59,7 +66,7 @@ services:
       - anomaly_alerts:/tmp/anomaly-alerts
       - anomaly_detector_queue_standard:/tmp/anomaly-detector-queue-standard
       - anomaly_detector_queue_critical:/tmp/anomaly-detector-queue-critical
-      - anomaly_ml_models:/tmp/ml-models
+      - anomaly_statistical_models:/tmp/statistical-models
     command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector-enterprise.yaml}"]
     deploy:
       resources:
@@ -69,12 +76,6 @@ services:
         reservations:
           memory: 1G
           cpus: '1.0'
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 13133 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     networks:
       - db-intelligence
 
@@ -113,7 +114,7 @@ volumes:
     driver: local
   anomaly_detector_queue_critical:
     driver: local
-  anomaly_ml_models:
+  anomaly_statistical_models:
     driver: local
 
 networks:
