@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  alert-manager:
+    build: .
+    environment:
+      MODULE_NAME: alert-manager
+      EXPORT_PORT: 8089
+      OTEL_SERVICE_NAME: alert-manager
+      # Federation endpoints for metrics
+      CORE_METRICS_ENDPOINT: host.docker.internal:8889
+      SQL_INTELLIGENCE_ENDPOINT: host.docker.internal:8890
+      ANOMALY_DETECTOR_ENDPOINT: host.docker.internal:8892
+      WEBHOOK_ENDPOINT: ${WEBHOOK_ENDPOINT:-http://localhost:9999/alerts}
+    ports:
+      - "8089:8089"
+      - "8897:8889"
+    volumes:
+      - ./config:/etc/otel
+    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]

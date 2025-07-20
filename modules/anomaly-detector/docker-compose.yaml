@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  anomaly-detector:
+    build: .
+    environment:
+      MODULE_NAME: anomaly-detector
+      EXPORT_PORT: 8084
+      OTEL_SERVICE_NAME: anomaly-detector
+      # Prometheus federation endpoints for pulling metrics from other modules
+      CORE_METRICS_ENDPOINT: host.docker.internal:8889
+      SQL_INTELLIGENCE_ENDPOINT: host.docker.internal:8890
+      WAIT_PROFILER_ENDPOINT: host.docker.internal:8891
+      # Anomaly detection thresholds
+      CONNECTION_SPIKE_THRESHOLD: "2.0"  # 2x standard deviation
+      LATENCY_DEVIATION_THRESHOLD: "3.0"  # 3x standard deviation
+      WAIT_EVENT_THRESHOLD: "2.5"  # 2.5x standard deviation
+      RESOURCE_USAGE_THRESHOLD: "2.0"  # 2x standard deviation
+    ports:
+      - "8084:8084"
+      - "8892:8889"
+    volumes:
+      - ./config:/etc/otel
+    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:13133/"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3

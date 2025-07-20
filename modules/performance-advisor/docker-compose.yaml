@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  mysql-test:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
+  performance-advisor:
+    build: .
+    environment:
+      MODULE_NAME: performance-advisor
+      MYSQL_ENDPOINT: mysql-test:3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: test
+      EXPORT_PORT: 8087
+      OTEL_SERVICE_NAME: performance-advisor
+      # Federation endpoints
+      CORE_METRICS_ENDPOINT: host.docker.internal:8889
+      SQL_INTELLIGENCE_ENDPOINT: host.docker.internal:8890
+    ports:
+      - "8087:8087"
+      - "8895:8889"
+    depends_on:
+      mysql-test:
+        condition: service_healthy
+    volumes:
+      - ./config:/etc/otel
+    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]
