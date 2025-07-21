@@ -166,15 +166,6 @@ receivers:
     password: ${env:MYSQL_PASSWORD}
     database: ${env:MYSQL_DATABASE}
     collection_interval: 10s
-    metrics:
-      mysql.locks:
-        enabled: true
-      mysql.statement_events.count:
-        enabled: true
-      mysql.statement_events.wait.time:
-        enabled: true
-      mysql.table_locks:
-        enabled: true
 
 processors:
   # Memory management
@@ -224,10 +215,7 @@ processors:
           - set(attributes["wait_category"], "cpu") where IsMatch(attributes["EVENT_NAME"], ".*cpu.*")
           - set(attributes["wait_category"], "other") where attributes["wait_category"] == nil
           
-          # Add severity based on wait time
-          - set(attributes["wait_severity"], "critical") where value > 1000
-          - set(attributes["wait_severity"], "warning") where value > 100 and value <= 1000
-          - set(attributes["wait_severity"], "normal") where value <= 100
+          # Add severity based on wait time (skip for now due to value access issues)
   
   # New Relic attributes
   attributes/newrelic:
@@ -308,4 +296,3 @@ service:
         service: wait-profiler
     metrics:
       level: detailed
-      address: 0.0.0.0:8888

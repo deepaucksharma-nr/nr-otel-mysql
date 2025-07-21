@@ -61,9 +61,6 @@ exporters:
   # Prometheus exporter for local metrics
   prometheus:
     endpoint: 0.0.0.0:8090
-    namespace: canary
-    const_labels:
-      module: canary-tester
 
 extensions:
   # WARNING: DO NOT ADD health_check extension here!
