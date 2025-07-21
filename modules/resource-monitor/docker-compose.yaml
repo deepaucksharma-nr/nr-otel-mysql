@@ -40,7 +40,7 @@ services:
       DISK_THRESHOLD_WARNING: "80"
       DISK_THRESHOLD_CRITICAL: "95"
       # Override specific endpoints if needed
-      COLLECTOR_CONFIG: ${COLLECTOR_CONFIG:-collector-enterprise-working.yaml}
+      COLLECTOR_CONFIG: ${COLLECTOR_CONFIG:-collector.yaml}
     ports:
       - "8088:8088"     # Module export port
       - "8904:8889"     # Internal metrics (changed from 8894 to avoid conflict)
@@ -65,7 +65,7 @@ services:
       - db-intelligence
     privileged: true
     pid: host
-    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector-enterprise-working.yaml}"]
+    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]
     deploy:
       resources:
         limits:

@@ -72,7 +72,7 @@ test:
 	@echo "✓ All module tests passed"
 
 # Run all modules
-run-all:
+run-all: validate-env
 	@echo "Starting all modules..."
 	@cd integration && docker-compose -f docker-compose.all.yaml up -d
 	@echo "✓ All modules started"
@@ -271,6 +271,10 @@ ci-integration:
 
 ci-validate:
 	@$(MAKE) validate-configs
+
+# Validate environment variables
+validate-env:
+	@./scripts/validate-environment.sh
 
 # Docker cleanup
 docker-clean:

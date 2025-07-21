@@ -68,13 +68,13 @@ processors:
         statements:
           # Try to extract table name from common SQL patterns
           # FROM table_name
-          - set(attributes["db.sql.table"], ExtractPatterns(attributes["db.statement"], "(?i)FROM\\s+([a-zA-Z0-9_]+)"))
+          - replace_pattern(attributes["db.sql.table"], attributes["db.statement"], "(?i).*FROM\\s+([a-zA-Z0-9_]+).*", "$$1") where attributes["db.sql.table"] == nil and IsMatch(attributes["db.statement"], "(?i).*FROM\\s+")
           # INSERT INTO table_name
-          - set(attributes["db.sql.table"], ExtractPatterns(attributes["db.statement"], "(?i)INSERT\\s+INTO\\s+([a-zA-Z0-9_]+)")) where attributes["db.sql.table"] == nil
+          - replace_pattern(attributes["db.sql.table"], attributes["db.statement"], "(?i).*INSERT\\s+INTO\\s+([a-zA-Z0-9_]+).*", "$$1") where attributes["db.sql.table"] == nil and IsMatch(attributes["db.statement"], "(?i).*INSERT\\s+INTO\\s+")
           # UPDATE table_name
-          - set(attributes["db.sql.table"], ExtractPatterns(attributes["db.statement"], "(?i)UPDATE\\s+([a-zA-Z0-9_]+)")) where attributes["db.sql.table"] == nil
+          - replace_pattern(attributes["db.sql.table"], attributes["db.statement"], "(?i).*UPDATE\\s+([a-zA-Z0-9_]+).*", "$$1") where attributes["db.sql.table"] == nil and IsMatch(attributes["db.statement"], "(?i).*UPDATE\\s+")
           # DELETE FROM table_name
-          - set(attributes["db.sql.table"], ExtractPatterns(attributes["db.statement"], "(?i)DELETE\\s+FROM\\s+([a-zA-Z0-9_]+)")) where attributes["db.sql.table"] == nil
+          - replace_pattern(attributes["db.sql.table"], attributes["db.statement"], "(?i).*DELETE\\s+FROM\\s+([a-zA-Z0-9_]+).*", "$$1") where attributes["db.sql.table"] == nil and IsMatch(attributes["db.statement"], "(?i).*DELETE\\s+FROM\\s+")
 
   # Business impact scoring based on configuration
   # Note: In a real implementation, this would load from the business-mappings.yaml file
@@ -286,6 +286,3 @@ extensions:
     logs:
       level: info
       output_paths: ["/tmp/logs/collector.log"]
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888

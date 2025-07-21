@@ -48,7 +48,7 @@ services:
       - ./logs:/tmp/logs
       - core_metrics_queue_standard:/tmp/core-metrics-queue-standard
       - core_metrics_queue_critical:/tmp/core-metrics-queue-critical
-    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector-basic-working.yaml}"]
+    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]
     deploy:
       resources:
         limits:

@@ -282,6 +282,3 @@ extensions:
     logs:
       level: info
       output_paths: ["/tmp/logs/collector.log"]
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888

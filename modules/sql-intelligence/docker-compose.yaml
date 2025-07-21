@@ -13,8 +13,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # volumes:
-    #   - ./src/init.sql:/docker-entrypoint-initdb.d/init.sql  # Commented out to prevent MySQL startup failures
+    volumes:
+      - ./src/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     
   sql-intelligence:
     # WARNING: DO NOT ADD healthcheck section here!
@@ -51,7 +51,7 @@ services:
       - ./logs:/tmp/logs
       - sql_intelligence_queue_standard:/tmp/sql-intelligence-queue-standard
       - sql_intelligence_queue_critical:/tmp/sql-intelligence-queue-critical
-    command: ["--config", "/etc/otel/${COLLECTOR_CONFIG:-collector.yaml}"]
+    command: ["--config", "/etc/otel/collector.yaml"]
     deploy:
       resources:
         limits:

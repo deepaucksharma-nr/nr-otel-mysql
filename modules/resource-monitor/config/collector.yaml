@@ -198,11 +198,13 @@ processors:
   filter/critical:
     error_mode: ignore
     metrics:
-      metric:
-        - 'name == "system.cpu.utilization" and value > 0.8'
-        - 'name == "system.memory.utilization" and value > 0.85'
-        - 'name == "system.disk.io_time" and value > 0.9'
-        - 'name == "system.filesystem.utilization" and value > 0.9'
+      include:
+        match_type: regexp
+        metric_names:
+          - "system\\.cpu\\.utilization"
+          - "system\\.memory\\.utilization"
+          - "system\\.disk\\.io_time"
+          - "system\\.filesystem\\.utilization"
 
   # New Relic specific attributes for standard pipeline
   attributes/newrelic_standard:
@@ -400,7 +402,4 @@ service:
   telemetry:
     logs:
       level: info
-      output_paths: ["stdout", "/tmp/otel-collector.log"]
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8889
+      output_paths: ["stdout"]

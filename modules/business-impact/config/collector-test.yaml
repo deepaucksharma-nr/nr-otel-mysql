@@ -66,12 +66,8 @@ service:
   telemetry:
     logs:
       level: "info"
-    metrics:
-      level: "detailed"
-      address: 0.0.0.0:8888
 
   pipelines:
-    metrics:
       receivers: [otlp, prometheus]
       processors: [batch, attributes, attributes/business_metadata, resource]
       exporters: [prometheus, debug]

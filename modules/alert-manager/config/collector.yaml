@@ -225,6 +225,3 @@ service:
       level: ${env:OTEL_LOG_LEVEL:-info}
       initial_fields:
         service: alert-manager
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888

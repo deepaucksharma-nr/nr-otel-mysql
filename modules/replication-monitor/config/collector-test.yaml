@@ -190,6 +190,3 @@ service:
       sampling:
         initial: 10
         thereafter: 100
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
